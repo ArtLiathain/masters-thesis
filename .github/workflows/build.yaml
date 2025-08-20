@@ -1,5 +1,9 @@
 name: Build and Release
 
+env:
+  STUDENT_NUMBER: "12345678"  # Replace with your student number
+  REPOSITORY_NAME: "name"  # Replace with your repository name
+
 on:
   push:
     branches:
@@ -35,11 +39,15 @@ jobs:
           run: |
             ./build.sh
 
+      - name: Rename PDF
+        run: |
+          mv thesis.pdf "${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf"
+
       - name: Upload PDF as an artifact
         uses: actions/upload-artifact@v4
         with:
           name: thesis
-          path: thesis.pdf
+          path: ${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -49,6 +57,6 @@ jobs:
           body: "Automatically generated release for version ${{ steps.cz.outputs.version }}"
           draft: false
           prerelease: false
-          files: thesis.pdf
+          files: ${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.CI_PAT }}

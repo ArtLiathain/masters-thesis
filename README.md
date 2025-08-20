@@ -19,6 +19,8 @@ Based on [original UL thesis template](https://www.overleaf.com/latex/templates/
 # How to use this template
 
 - Fork it or clone and change remote to your own repository
+- Set up a fine-grained personal access token with R/W permissions on Contents and Actions on this repo
+- Add it to Settings > Secrets > Actions > Repository secrets as `CI_PAT`
 
 
 ## Build PDF of the report:
