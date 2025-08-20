@@ -48,3 +48,10 @@ I found these quite good
 - Run `./build.sh` to build the PDF locally
 - Open `thesis.pdf` in your PDF viewer to see the changes
 - `cz commit` NOT `git commit`
+
+## Pro tips
+- Use `clean.sh` to remove intermediate files. 
+This can sometimes fix build issues, particularly with citations.
+- If you push straight to `main`, commit to main again without pulling, 
+and try to push again, you'll get an error. 
+Fix with `git pull --rebase` and then push again.
