@@ -1,0 +1,95 @@
+% this file is called up by thesis.tex
+% content in this file will be fed into the main document
+
+\chapter{Math formulae in Latex} % top level followed by section, subsection
+
+
+% ----------------------- paths to graphics ------------------------
+
+% change according to folder and file names
+\ifpdf
+    \graphicspath{{4_chapter4/figures/PNG/}{4_chapter4/figures/PDF/}{4_chapter4/figures/}}
+\else
+    \graphicspath{{4_chapter4/figures/EPS/}{4_chapter4/figures/}}
+\fi
+
+
+% ----------------------- contents from here ------------------------
+
+\section{Math}
+
+
+In-text Math
+\begin{itemize}
+\item A vector vector $\hat{A}_{ba}\{x_{ba}, y_{ba}, z_{ba}\} $  
+\item Another vector $R^{b}\{\hat{t}_{1b}, \hat{t}_{2b}, \hat{t}_{3b}\}$ as:
+\end{itemize}
+
+
+\vspace{5mm}
+A series of Equations:
+
+\begin{equation}\label{eq:T1b}
+\hat{t}_{1b} = \hat{A}_{ba}
+\end{equation} 
+
+
+\begin{equation}\label{eq:T2b}
+\hat{t}_{2b} = \frac{\hat{A}_{ba} \times \hat{M}_{bm}}{\mid \hat{A}_{ba} \times \hat{M}_{bm} \mid}
+\end{equation}  
+
+
+\begin{equation}\label{eq:T3b}
+\hat{t}_{3b} = \hat{t}_{1b} \times \hat{t}_{2b}
+\end{equation}  
+
+ \begin{equation}\label{eq:Ra}
+R^{a} = R^{b} (R^{i})^{T} = [\hat{t}_{1b}, \hat{t}_{2b}, \hat{t}_{3b}] [\hat{t}_{1i}, \hat{t}_{2i}, \hat{t}_{3i}]^{T}
+\end{equation}  
+
+\vspace{5mm}
+
+where the symbol $^{T}$ denotes transposition.
+
+\begin{equation}\label{eq:T2bapp}
+\hat{t}_{2b} = \frac{\hat{A}_{ba} \times \hat{M}_{bm}}{\mid \hat{A}_{ba} \times \hat{M}_{bm} \mid} 
+\end{equation}  
+
+\[
+= \frac{(y_{ba} z_{bm} - y_{bm} z_{ba}, z_{ba} x_{bm} - z_{bm} x_{ba}, x_{ba} y_{bm} - x_{bm} y_{ba} )}{\mid A_{ba} \mid \mid M_{bm} \mid \sqrt{1 - (\hat{A}_{ba} \cdot \hat{M}_{bm})^{2}  }}
+\]
+
+
+\[
+= \frac{-0.2338, -0.0931, -0.0651}{ 0.2601}
+\]
+
+\[
+= (-0.8989, -0.3579, -0.2503)
+\]
+ 
+ which if normalised gives:
+ 
+ \[
+= (-0.8995, -0.3581, -0.2504)
+\]
+
+
+\vspace{10mm}
+A matrix
+\[
+ R^{b} = [\hat{t}_{1b}, \hat{t}_{2b}, \hat{t}_{3b}] = 
+ \begin{pmatrix}
+  -0.2698 & -0.8995 & 0.3439 \\
+  0.0035 & -0.3581 & -0.9337 \\
+  0.9629 & -0.2504 & 0.0997
+ \end{pmatrix}
+\]
+
+
+
+
+
+% ---------------------------------------------------------------------------
+% ----------------------- end of thesis sub-document ------------------------
+% ---------------------------------------------------------------------------

@@ -1,0 +1,97 @@
+% this file is called up by thesis.tex
+% content in this file will be fed into the main document
+
+\chapter{Chapter 3} % top level followed by section, subsection
+
+\ifpdf
+    \graphicspath{{3_chapter3/figures/PNG/}{3_chapter3/figures/PDF/}{3_chapter3/figures/}}
+\else
+    \graphicspath{{3_chapter3/figures/EPS/}{3_chapter3/figures/}}
+\fi
+
+% ----------------------- contents from here ------------------------
+
+
+
+
+\section{Insert a Figure}
+ We refer to a figure in the text like this:  (Figure \ref{image02}).
+ 
+ \figuremacroW{image02}{Title of Figure}{Description. [Source: (\cite{mydownloadedimage})]}{0.7} 
+ 
+
+
+\section{Creating a list}
+
+\begin{itemize} \itemsep1pt \parskip0pt \parsep0pt
+\item \textbf{(2000)} item 1. 
+\item \textbf{(2004)} item 2. 
+\item \textbf{(2010)} item 3. 
+\item \textbf{(2013)} item 4. 
+\end{itemize}
+
+
+\subsection{Creating a Table}
+
+\begin{table}[htpp]
+\caption{Table Title}
+\begin{center}
+\begin{tabular}{| p{3cm} | c | c | c |}
+\hline 
+ & Resolution & Min & Max \\ \hline 
+Gyroscope & 4.5mV / {$^{\circ}$}/s & 0.27 $^{\circ}$/s & 406 $^{\circ}$/s \\ \hline
+Accelerometer & 600mV /g &  0.002g & 2g \\ \hline
+Magnetometer & 385mV/ gauss & 0.317 gauss & 6 gauss \\ \hline
+\end{tabular}
+\end{center}
+\label{Sensors' Resolution}
+\end{table}%
+
+
+% here is how to do a page break
+\pagebreak
+%done
+
+\section{Quote}
+ An in-text quote is declared in the following way:
+
+\begin{quote}
+
+Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward! Recycling is the way forward!    (CommonSense, p. 0) 
+
+ \end{quote}
+
+Another way of doing it is:
+\begin{quote}
+{
+\centering
+\emph{There are in our existence spots of time, \\
+That with distinct pre-eminence retain \\
+A renovating virtue, whence-depressed \\
+By false opinion and contentious thought, \\
+Or aught of heavier or more deadly weight, \\
+In trivial occupations, and the round \\
+Of ordinary intercourse-our minds \\ 
+Are nourished and invisibly repaired; \\ 
+A virtue, by which pleasure is enhanced, \\ 
+That penetrates, enables us to mount, \\ 
+When high, more high, and lifts us up when fallen. \\ 
+}
+
+(\Citealt[verses 208-218]{poem})
+
+}
+
+
+\end{quote}
+
+
+
+
+
+
+
+
+% ---------------------------------------------------------------------------
+% ----------------------- end of thesis sub-document ------------------------
+% ---------------------------------------------------------------------------

@@ -1,0 +1,55 @@
+% this file is called up by thesis.tex
+% content in this file will be fed into the main document
+
+%: ----------------------- name of chapter  -------------------------
+
+\chapter{Chapter 2} % top level followed by section, subsection
+
+%: ----------------------- paths to graphics ------------------------
+
+% change according to folder and file names
+\ifpdf
+    \graphicspath{{2_chapter2/figures/PNG/}{2_chapter2/figures/PDF/}{2_chapter2/figures/}}
+\else
+    \graphicspath{{2_chapter2/figures/EPS/}{2_chapter2/figures/}}
+\fi
+
+%: ----------------------- contents from here ------------------------
+
+Latex will automatically renumber sections! Also it creates list of figures, list of tables and references! Nice job!
+
+
+This document is formatted according to the University of Limerick specification for the submission of a Master or PhD dissertation.
+Double-page printing is already in the code!
+If you want to change things  you need to modify the `PhDthesisPSnPDF.cls' file found in Latex/Classes 
+
+
+
+
+\section{Font}
+
+Normal font \textbf{Bold Font} \emph{italics}.  List of \textcolor{blue}{colours} \textcolor{red}{for} \textcolor{ForestGreen}{font} can be found at: \url{http://en.wikibooks.org/wiki/LaTeX/Colors}
+
+\subsection{Special characters}
+
+Special characters such as \& and \% need to be treated in a special way. Check the full list of special characters here: \url{http://en.wikibooks.org/wiki/LaTeX/Special_Characters}
+\subsubsection{Subsubsection Title}
+
+\subsection{Wiki page}
+
+You can learn more about Latex by clicking \href{http://en.wikibooks.org/wiki/LaTeX}{here}.
+
+
+\section{Another Section}
+
+\subsection{Another Subsection}
+
+\subsubsection{Another Subsubsection Title}
+
+
+
+
+% ---------------------------------------------------------------------------
+%: ----------------------- end of thesis sub-document ------------------------
+% ---------------------------------------------------------------------------
+
