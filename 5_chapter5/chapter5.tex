@@ -1,0 +1,36 @@
+% this file is called up by thesis.tex
+% content in this file will be fed into the main document
+
+
+
+%: ----------------------- name of chapter  -------------------------
+\chapter{Chapter 5} % top level followed by section, subsection
+
+\ifpdf
+    \graphicspath{{5_chapter5/figures/PNG/}{5_chapter5/figures/PDF/}{5_chapter5/figures/}}
+\else
+    \graphicspath{{5_chapter5/figures/EPS/}{5_chapter5/figures/}}
+\fi
+
+
+
+
+
+You can also you this kind of referencing if needed in the text: 
+
+Surname \cite{mybookchapter} said that . . .
+
+ 		
+
+
+
+
+
+
+
+
+
+% ---------------------------------------------------------------------------
+%: ----------------------- end of thesis sub-document ------------------------
+% ---------------------------------------------------------------------------
+

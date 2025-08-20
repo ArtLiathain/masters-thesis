@@ -1,0 +1,62 @@
+name: Build and Release
+
+env:
+  STUDENT_NUMBER: "12345678"  # Replace with your student number
+  STUDENT_NAME: "name"  # Replace with your repository name
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  bump-and-build:
+    if: "!startsWith(github.event.head_commit.message, 'bump:') && github.ref_name == 'main'"
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    name: "Bump version, create changelog, and release"
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: "${{ secrets.CI_PAT }}"
+
+      - id: cz
+        name: Bump version and create changelog
+        uses: commitizen-tools/commitizen-action@a49cac8e98f3954a16e107f026f71cf84b17706c  # v0.23.1
+        with:
+          github_token: ${{ secrets.CI_PAT }}
+
+      - name: Print Version
+        run: echo "Bumped to version ${{ steps.cz.outputs.version }}"
+
+      - uses: xu-cheng/texlive-action@v2
+        with:
+          scheme: full
+          run: |
+            ./build.sh
+
+      - name: Rename PDF
+        run: |
+          mv thesis.pdf "${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf"
+
+      - name: Upload PDF as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: thesis
+          path: ${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "${{ steps.cz.outputs.version }}"
+          name: "Release ${{ steps.cz.outputs.version }}"
+          body: "Automatically generated release for version ${{ steps.cz.outputs.version }}"
+          draft: false
+          prerelease: false
+          files: ${{ env.STUDENT_NUMBER }}_${{ env.STUDENT_NAME }}_thesis_${{ steps.cz.outputs.version }}.pdf
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_PAT }}
