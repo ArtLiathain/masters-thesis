@@ -14,7 +14,7 @@ These modifications enable:
 
 # Changes and Additions:
 - Citation style changed to IEEE
-- Some changed to PDF generation flags to use xelatex
+- Some PDF generation flags for xelatex
 - Commitizen for semantic versioning
 - Github Action to build document, save version
 
@@ -35,17 +35,17 @@ I found these quite good
 # How to use this template
 
 ## Initial setup
-- Fork it or clone and change remote to your own repository
-- Set up a fine-grained personal access token with R/W permissions on Contents and Actions on this repo
-- Add it to Settings > Secrets > Actions > Repository secrets as `CI_PAT`
-- Add details to `.github/workflows/build.yaml`
+- Fork repo or clone and change remote to your own repository
+- Set up a fine-grained personal access token with R/W permissions on Contents and Actions on new repo
+- Add it to new repo > Settings > Secrets > Actions > Repository secrets as `CI_PAT`
+- Add your personal details to env vars in `.github/workflows/build.yaml`
 - `cz commit` instead of `git commit` (!IMPORTANT!)
 - Push to branch and pr, or push straight to `main`. Build triggers on changes to `main`
-- Ensure build is successful, creates a release and tags correctly
+- Ensure build is successful, creates a release and tags correctly.
 
 ## Local development
 - Make changes
-- Run `./build.sh` to build the PDF locally
+- Run `build.sh` to build the PDF locally
 - Open `thesis.pdf` in your PDF viewer to see the changes
 - `cz commit` NOT `git commit`
 
