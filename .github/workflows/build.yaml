@@ -1,8 +1,8 @@
 name: Build and Release
 
 env:
-  STUDENT_NUMBER: "12345678"  # Replace with your student number
-  STUDENT_NAME: "name"  # Replace with your repository name
+  STUDENT_NUMBER: "22363092"  # Replace with your student number
+  STUDENT_NAME: "Art Ó Liatháin"  # Replace with your repository name
 
 on:
   push:
