@@ -2,7 +2,23 @@
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
 #import "@preview/fletcher:0.5.8": shapes
 #import "@preview/dashy-todo:0.1.3": todo
+#set page(
+  paper: "us-letter", // IEEE/ACM standard
+  margin: (x: 0.75in, y: 1in),
+  columns: 1,
+)
 
+#set text(
+  font: "Linux Libertine", // Closest to Times New Roman but looks better
+  size: 12pt,
+  weight: "regular",
+)
+
+#set par(
+  justify: true,
+  leading: 0.55em,     // Line spacing
+  first-line-indent: 1.5em,
+)
 #show: arkheion.with(
   title: "Architectural Guardrails: An Opinionated Framework for Preventing Structural Decay in Greenfield Research Software",
   authors: (
@@ -25,15 +41,11 @@
 )
 #pagebreak()
 
+= Abstract
+
+
 = Introduction
-This is just notes for into and paper structure
 
-- Talk about code quality as a whole
-- Talk about issues in research funding cycle
-- Talk about how pervasive technical debt is
-- Talk about reproducibility paper -> Mention the affect this has on the validity of papers
-
-The core idea of the debt analysis is a 3 step process Identify high risk/churn code areas, use a tool maybe machine learning to analyse and understand the code, derive rules from both texts such as architectural smells that are correlated to high #emph[debt interest] @xiao_identifying_2016 
 
 === Research question
 Can opinionated objective rules be derived from historical and static analysis on code repositories
@@ -41,18 +53,40 @@ Can opinionated objective rules be derived from historical and static analysis o
 Do these rules notably increase code quality
 
 === Thoughts on structure
-Instead of one literature review, I'm almost thinking of stages so I do one review now for identification methods and then another for creating an AST analyser as well as the methodology since both feel they could've been a mini thesis in their own right and if I don't do it this way i feel it'll be very very front loaded
 
+The core idea of the debt analysis is a 3 step process Identify high risk/churn code areas, use a tool maybe machine learning to analyse and understand the code, derive rules from both texts such as architectural smells that are correlated to high #emph[debt interest] @xiao_identifying_2016 
 
 = Background on Identifying technical debt
-- Maintainability
-- Technical Debt
-- State of Research software
-- Importance of architectural debt
-- Current methods to identify debt (Smells and @xiao_identifying_2016)
-- 
+- Current methods to identify debt 
+  - smells
+  - machine learning
+- Impact debt has on code in the long run
+- How do the suggestions work
+- AST and how they work
+  - Ruff
+  - Sonarqube etc
+- (MAYBE) Talk about machine learning in pattern analysis for detecting high bug spots for the code and repeating issues.
+
+
+
+#pagebreak()
+== The current state of research software
+
+Research software is interesting for a few different reasons, its software made to investigate new ideas and concepts. This comes with one very prominent issue, researchers who are leading the way to new concepts are generally not programmers by trade, 90% of scientists are self taught in programming @wilson_best_2014. 
+This creates many issues, software is made without a care and it follows the simple check of #emph[It works on my computer]. This is best observed by @trisovic_large-scale_2022 where over 9000 R files were analysed from the Dataverse Project (http://dataverse.org/). In this study following good practice only 25% of projects were runnable and adding in code cleaning where dependencies were retroactively found and hardcoded paths were altered only 56% were able to be run.
+This is an abysmal result, this result doesn't even compare if the results are consistent with the results this code produced. @trisovic_large-scale_2022 did note that journals are beginning to mandate better quality standards for code through research software standards to particularly allow for reproducibility to ensure the results published by the papers are correct. 
+
+It is not enough, the crux of the issue is that software is made to fit a funding cycle without a care for the longevity of the codebase. Funding is fundementally not suited for research software @howison_sustainability_nodate notes that unlike commercial products where revenue grows linearly with users research grants are fixes and do not require or reward developers for user acquisition. Funding pushes research software to focus on itself with no incentives outside of a research paper output. A flawed approach which @howison_sustainability_nodate does address with two alternative solutions; Commercial models in which the research software itself transitions to a self sufficient project which keeps itself alive and peer-production models which is a similar approach as open-source. I agree that both of these models have merit, they allow research software to live past the funding cycle and continue to improve over time, there is one key issue with this approach. 
+
+
+As 90% of researchers @wilson_software_2006 don't have prior programming experience, they need good clear guidance on how to create and maintain a large software project. Unfortunately research software guidance are laughable as broadly they only focus on software reproducibility @wilson_best_2014 @jimenez_four_2017 @marwick_computational_2017 @eglen_towards_2017 @wilson_software_2006 (Need to reword this later). Reproducibility is considered such a simple part of industry software that it isn't considered a metric to hit, it is a given yet in research software is it laid out as being the metric for best practice. Interestingly with all the focus on reproducibility  is no guidance on maintainability, coding standards or even basic structuring, the papers only if ever mention a vague sense of what should be done without and clear guidelines or criteria on how it should be done. A deficient that directly goes against the goals of @howison_sustainability_nodate in creating long living research software.
+
+
+This is the gap my paper is seeking to fill, to create an opinionated tool that will ensure code is written well. This is a vital tool for research software as maintainable software is extendable software which will allow research to build upon each other more quickly and easily contributing to more focus put on solving new problems rather than remaking an old one to then use.
+
+
 == Maintainability
-Maintainability is term used frequently in software engineering, there is no definite definition on what maintainability is but ISO25010 defines it as "The degree of effectiveness and efficiency with which a product or system can be modified to improve it, correct it or adapt it to changes in environment, and in requirements." It defines that the sub sections of maintainability are #emph[Modularity, Re-usability, Analysability, Modifiability, Testability]. 
+Maintainability is term used frequently in software engineering, there is no definite definition on what maintainability is but ISO25010 defines it as "The degree of effectiveness and efficiency with which a product or system can be modified to improve it, correct it or adapt it to changes in environment, and in requirements." It defines that the sub sections of maintainability are #emph[Modularity, Re-usability, Analysability, Modifiability, Testability]. @noauthor_iso_nodate
 This is a very broad definition which simply means how easy can the system be modified for change. Due to the broadness of the definition it can easily be used to bring other non functional requirements as sub requirements ie. Flexibility, Adaptability, Scalability, Fault tolerance, Learn ability. The lack of clear testable outcomes for each quality in the ISO standard leads to a conceptual overlap where maintainability becomes a 'catch-all' category for non-functional requirements.
 
 === What does it mean to be maintainable?
@@ -62,30 +96,28 @@ D.L Parnas presented a study revealing how easily developers could fall into the
 
 === Measuring Maintainability
 Because maintainability is an abstract concept, various frameworks have attempted to reduce it to a concrete numerical metric. An early approach in this area is the Maintainability Index (MI), which calculates a score based on a weighted combination of Halstead Volume, cyclomatic complexity, lines of code (LOC), and comment density @oman_metrics_1992.
-The formula typically utilized for this assessment is:$$MI = 171 - 5.2 \ln(V) - 0.23(G) - 16.2 \ln(LOC) + 50 \sin(\sqrt{2.46 \times C})$$Where $V$ represents Halstead Volume, $G$ is Cyclomatic Complexity, and $C$ is the percentage of comment lines.
-- Need to mention how the formula is likely outdated but even a modernisation is not the solution
-The Oman study validated this metric through feedback from 16 developers and empirical testing on industrial systems, including those at Hewlett-Packard and various defense contractors. This methodology provided a pragmatic tool for engineering managers to prioritize maintenance efforts by assigning a tangible value to code quality. 
+The formula typically utilized for this assessment is:$$MI = 171 - 5.2 \ln(V) - 0.23(G) - 16.2 \ln(LOC) + 50 \sin(\sqrt{2.46 \times C})$$Where $V$ represents Halstead Volume, $G$ is Cyclomatic Complexity, and $C$ is the percentage of comment lines. 
+
+
+@oman_metrics_1992 validated this metric through feedback from 16 developers and empirical testing on industrial systems, including those at Hewlett-Packard and various defense contractors. This methodology provided a pragmatic tool for engineering managers to prioritize maintenance efforts by assigning a tangible value to code quality. 
 While the MI provides a high-level overview of code density, it suffers from what can be described as "semantic blindness."
-Metrics such as Cyclomatic Complexity and Halstead Volume analyze the control flow and token count of a file but fail to interpret the structural intent or the relationships between components. 
-
-In regards to Architectural Technical Debt (ATD) a script may maintain a high MI score due to low complexity and short length, yet contain architectural flaws such as "God Objects" or tight coupling to external datasets that inhibit reuse. Because the MI only evaluates the "bulk" of the code rather than its structure, it cannot identify these high-interest debt artifacts. 
-
+Metrics such as Cyclomatic Complexity and Halstead Volume analyze the control flow and token count of a file but fail to interpret the structural intent or the relationships between components. This is referred to as blind metrics and is a deficiency in this method. Utilising blind metrics allow for efficient and quick but it opens the door to gaming the system in a sense, where developers could reach extremely maintainable scores syntactically while semantically being unmaintainable, thereby abusing the formula.
+An example of this is a script that maintains a high MI score due to low complexity and short length, yet contain architectural flaws such as "God Objects" or tight coupling to external datasets that inhibit reuse. The formula was a product of its time finely tuned to the teams and projects it was applied to, in the modern landscape the current formula would definitely not be accurate with how modern languages have evolved. Even though the formula could be adapted to a modern context it is clear that even a modernised version would suffer from blind metrics and is not something that should be used as only counting lines cannot yield results on the true quality of code. 
 
 
-A more modern approach was proposed by Xiao et al, of identifying architectural debt through evolutionary analysis of a codebase @xiao_identifying_2016. Where architectural debt can be used as a measure of maintainability albeit without a clear score. The paper proposed that there are four key architectural patterns that are the main proponents of ATD, Hub, Anchor Submissive, Anchor Dominant, and Modularity Violation. These patterns are all based on evolutionary dependencies between files, particularly those that are correlated only through commits and lack structural commonality.
+
+An approach that would apply in a more modern context was proposed by Xiao et al, of identifying architectural debt through evolutionary analysis of a codebase @xiao_identifying_2016. Where architectural debt can be used as a measure of maintainability albeit without a clear score. The paper proposed that there are four key architectural patterns that are the main proponents of ATD, Hub, Anchor Submissive, Anchor Dominant, and Modularity Violation. These patterns are all based on evolutionary dependencies between files, particularly those that are correlated only through commits and lack structural commonality.
+
+Explain briefly the four types with images if possible
+
 This was measured by preforming a pseudo longitudinal study on large open source codebases, using tools such as Understand and Titan to calculate commit coefficient between every file. A metric which relates to the chance of a commit on one file will require a commit on another. An example would be given files A, B and C, with a commit history of {A,B} and {A,C} the commit coefficients in relation to A are there is a 100% chance if B or C is modified A will be also, but if A is modified there is only a 50% chance that B or C will be modified.
 This would then be called a fileset, this would be extrapolated over the entire commit history and codebase creating many filesets. This would allow the tool to extract semantic relations between files that are not apparent structurally. The study was able to compound this effect by measuring the number of commits labeled as bug fixes against the number of feature commits, this allows simple data analytics to measure the amount of maintenance debt that each fileset would have. 
-Using this method 
+Using this method, high maintenance filsets can be labelled and evaluated as a quantitative metric. This is a strong contender for a evaluation metric but there is a caveat, that is it is reliant on good commit messages and issue tracking which is not commonly seen in research code. Meaning that a new approach that is agnostic to the quality of the codebase is required to.
 
 
 
-Another more modern method of 
 
 
-=== Problems with Blind metrics
-
-
-As this is a very wishy washy definition it makes more sense for this paper to define maintainability as "The inverse amount of technical debt to lines of code". This is a much simpler definition that is quantifiable, although it requires that technical debt be explained in detail for it to be truly understood.
 
 == Technical Debt
 
@@ -93,10 +125,13 @@ Technical debt (TD) was first defined as "Shipping first time code is like going
 In the following years research has shown TD is not a singular type of problem and there are many forms to it, the five most prevalent types of TD are #text(weight:"bold")[Design debt, Test debt, Code debt, Architecture debt and Documentation debt] this was extracted from 700+ surveys across 6 countries @ramac_prevalence_2022. The artifacts used to identify design debt, code debt and architectural debt have significant overlap and these artifacts exhibit behaviours similar to Architectural Technical Debt (ATD)@xiao_identifying_2016. 
 Similarly to Maintainability, this paper defines Technical debt in regards to design, architecture and code as ATD and will be the primary focus of this paper.
 
+Technical debt is a pervasive problem in research software development @hassan_characterising_2025 where "does it compile" is the only quality metric tracked in codebases. This means that technical debt accrues significant interest as time increases. 
 
+= Static Analysis
+Static analysis in code is a storied field in which a primary focus has always been improving code quality. Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
+Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
 
-
-Technical debt is a pervasive problem in research software development @hassan_characterising_2025 where does it compiles is the only quality tracked in the codebase. This means that technical debt accrues significant interest as time increases 
+Data flow analysis is the next logical step from regex parsing code checking. THis 
 
 
 #bibliography("references.bib")
