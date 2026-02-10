@@ -85,6 +85,16 @@ As 90% of researchers @wilson_software_2006 don't have prior programming experie
 This is the gap my paper is seeking to fill, to create an opinionated tool that will ensure code is written well. This is a vital tool for research software as maintainable software is extendable software which will allow research to build upon each other more quickly and easily contributing to more focus put on solving new problems rather than remaking an old one to then use.
 
 
+
+= Static Analysis
+Static analysis in code is a storied field in which a primary focus has always been improving code quality. The tooling is imperative in modern engineering to allow for developers to see and fix maintainability and security issues in code. Unfortunately these tools are not prevalent in the research software space when it is most important as self taught developers do not have the mental model to identify the maintainability issue that plague codebases. 
+
+Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
+Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
+
+Abstract syntax trees are a concept 
+
+
 == Maintainability
 Maintainability is term used frequently in software engineering, there is no definite definition on what maintainability is but ISO25010 defines it as "The degree of effectiveness and efficiency with which a product or system can be modified to improve it, correct it or adapt it to changes in environment, and in requirements." It defines that the sub sections of maintainability are #emph[Modularity, Re-usability, Analysability, Modifiability, Testability]. @noauthor_iso_nodate
 This is a very broad definition which simply means how easy can the system be modified for change. Due to the broadness of the definition it can easily be used to bring other non functional requirements as sub requirements ie. Flexibility, Adaptability, Scalability, Fault tolerance, Learn ability. The lack of clear testable outcomes for each quality in the ISO standard leads to a conceptual overlap where maintainability becomes a 'catch-all' category for non-functional requirements.
@@ -127,11 +137,11 @@ Similarly to Maintainability, this paper defines Technical debt in regards to de
 
 Technical debt is a pervasive problem in research software development @hassan_characterising_2025 where "does it compile" is the only quality metric tracked in codebases. This means that technical debt accrues significant interest as time increases. 
 
-= Static Analysis
-Static analysis in code is a storied field in which a primary focus has always been improving code quality. Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
-Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
+== Dealing with technical debt 
+When dealing with technical debt there are two 
+- How to identify with smells
+- How do auto suggestions work look at tools
 
-Data flow analysis is the next logical step from regex parsing code checking. THis 
 
 
 #bibliography("references.bib")
