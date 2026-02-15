@@ -1,6 +1,10 @@
-# Cumilative Code churn.
-Cumilative Code churn -> Number of lines deleted addd or modified from the source
+# Cumilative Code churn Impact on maintainability
+Cumilative Code churn -> Number of lines deleted added or modified from the source
 
+Key points, they conclude that modifying files already modified a lot increases the mainatinability burden -> This makes sense, a file that changes often violates SOLID and other concepts
+This is predicated on the probabilistic software quality model so hard to substantaite
+
+Code churn measured is a good idea to show what files are undergoing rapid change
 
 ### Good
 -
@@ -35,3 +39,6 @@ A paper predicated on the one above, i dont want to double dip but due to issues
 - How churn should be used as a flag for investigation over the final answer
 - Maintainability is too abstract to be broken down into a formula
 
+
+## For later
+- Martin fowler about small code changes -> not the best solution but what researchers need
