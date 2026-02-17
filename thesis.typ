@@ -97,7 +97,7 @@ Static analysis in code is a storied field in which a primary focus has always b
 Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
 Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
 
-Abstract syntax trees are a concept 
+Abstract syntax trees are what modern tooling uses to explore the semantic realation of programs. The tokenise the code and covert it into a traversable tree in which static analysis rules can be applied to @cousot_abstract_1977. Trees are foundational to modern analysis approaches such as data flow analysis and platform level analysis 
 
 
 == Code churn

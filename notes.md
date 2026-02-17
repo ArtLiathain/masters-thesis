@@ -40,5 +40,37 @@ A paper predicated on the one above, i dont want to double dip but due to issues
 - Maintainability is too abstract to be broken down into a formula
 
 
+# Static Analysis
+Talk about how modern static analysis works through AST, how they snapshot the code to give 
+If intuition is correct the approach si that the groundwork for these tools are old, but the modernisation of them is generally higer level concept particularly about reducing false positives
+This is where both a modernisation of approach using temporal analysis and specific targeted rules can apply to this context.
+
+## Abstract Interpretation
+- A paper focused on how a lattice representation for AST can be used for static anlysis through formal proofs of code -> Very old refernce to modern day static analysis
+
+## Datadog report 
+- Advantage of shift left
+
+
+
+# Wasted time
+- Stripe 2018 study 17hrs a week devs spend fixing bad code
+
 ## For later
 - Martin fowler about small code changes -> not the best solution but what researchers need
+
+
+# When reading papers 
+What is the aim of the paper
+
+How did they do what they've done
+
+What were the results
+
+Conclusions
+
+What do you think the results mean
+
+
+
+Outline methodology
