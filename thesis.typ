@@ -90,15 +90,69 @@ As 90% of researchers @wilson_software_2006 don't have prior programming experie
 This is the gap my paper is seeking to fill, to create an opinionated tool that will ensure code is written well. This is a vital tool for research software as maintainable software is extendable software which will allow research to build upon each other more quickly and easily contributing to more focus put on solving new problems rather than remaking an old one to then use.
 
 
+--- Point of the section
+- Highligh current analysis methods
+- Talk about how this predominantly has a storied path
+- Issues with noisy error and false positives
+- How that when applied to research means that generally errors will slip through the cracks
 
 = Static Analysis
 Static analysis in code is a storied field in which a primary focus has always been improving code quality. The tooling is imperative in modern engineering to allow for developers to see and fix maintainability and security issues in code. Unfortunately these tools are not prevalent in the research software space when it is most important as self taught developers do not have the mental model to identify the maintainability issue that plague codebases. 
 
+One of the key ideas behind static analysis is abstraction. Abstraction refers to
+transformation of a program, called concrete program, into another program that
+still has some key properties of the concrete program, but is much simpler, and
+therefore easier to analyze [5]. Over-approximation results when there are more
+behaviors in the abstraction than in the concrete system [5]. Under-approximation,
+on the other hand, deals with fewer behaviors than in the concrete system.
+Static analysis can be sound or unsound. Soundness guarantees that the information computed by the analysis holds for all program executions, whereas
+unsound analysis does not [11]. Static analysis can be made path, flow, and context
+sensitive by making it to distinguish between paths, order of execution of statements, and method call (call site), respectively [12]. Precision of an analysis
+approach can be measured by classifying the analysis results into three categories
+[13]: false positives, i.e., nonexistent bugs are reported as potential bugs; false
+negatives, i.e., bugs that are undiscovered; and true positives, i.e., true and discovered bug. Efficiency is related to computational complexity or cost pertaining to
+space and time requirements of the algorithms used in the analysis [5]. Precision
+and efficiency are related to each other, i.e., a precise analysis is more costly and
+vice versa.
+
+== Lint the progenitor
+
 Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
 Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
 
-Abstract syntax trees are what modern tooling uses to explore the semantic relation of programs. The tokenise the code and covert it into a traversable tree in which static analysis rules can be applied to @cousot_abstract_1977. Trees are foundational to modern analysis approaches such as data flow analysis and platform level analysis yet all the approaches to static analysis much like the name have remained static for many years. AST are dated back to when compilers were first implemented as the base approach of a semantic representation of code, in terms of static analysis it allows for a semantic view of the code to be made and opens the gate to language agnostic analysis @cousot_abstract_1977. 
-Coupling this semantic view with approaches like data flow analysis which through a converting the code into a directed graph can track the flow of data through a program, identifying if the data is tainted, null or default. Allowing a high level step through of the program to help map out the potential execution contexts in every edge/state. 
+== Modern Approaches
+=== Data Flow analysis
+The most popular static analysis technique. By constructing a graph-based representation of the program, called a control flow graph, and writing data flow equations for each node of the graph. These equations are then repeatedly solved to calculate output from input at each node locally until the system of equations stabilizes or reaches a fixed point. The major dataflow analyses used are reaching definitions (i.e., most recent assignment to a
+variable), live variable analysis (i.e., elimination of unused assignments), available
+expression analysis (i.e., elimination of redundant arithmetic expressions), and very
+busy expression analysis (i.e., hoisting of arithmetic expressions computed on multiple paths) [2]. At each source code location, data flow analysis records a set of facts
+about all variables currently in scope. In addition to the set of facts to be tracked, the
+analysis defines a “kills” set and a “gens” set for each block. The “kills” set describes
+the set of facts that are invalidated by execution of the statements in the block, and the
+“gens” set describes the set of facts that are generated by the execution of the statements in the block. To analyze a program, the analysis tool begins with an initial set of
+facts and updates it according to the “kills” set and “gens” set for each statement of the
+program in sequence. Although mostly used in compiler optimization @kam_global_1976 data
+flow analysis has been an integral part of most static analysis tools @gosain_static_2015.
+
+
+This technique was formalized by Cousot and Cousot [22]. It is a theory of
+semantics approximation of a program based on monotonic functions over ordered
+sets, especially lattices [23]. The main idea behind this theory is as follows: A
+concrete program, its concrete domain, and semantics operations are replaced by an
+approximate program in some abstract domain and abstract semantic operations.
+Let L be an ordered set, called a concrete set, and let L′ be another ordered set,
+called an abstract set. A function α is called an abstraction function if it maps an
+element x in the concrete set L to an element α(x) in the abstract set L′. That is,
+element α(x) in L′ is the abstraction of x in L. A function γ is called a concretization
+function if it maps an element x′ in the abstract set L′ to an element γ(x′) in the
+concrete set L. That is, element γ(x′) in L is a concretization of x′ in L′. Let L1, L2, L′
+1, and L′2 be ordered sets. The concrete semantics f is a monotonic function from
+L1 to L2. A function f′ from L′1 to L′2 is said to be a valid abstraction of f if for all x′
+in L′1, (f ∘ γ)(x′) ≤ (γ ∘ f′)(x′). The primary challenge to applying abstract interpretation is the design of the abstract domain of reasoning [24]. If the domain is too
+abstract, then precision is lost, resulting in valid programs being rejected. If the
+domain is too concrete, then analysis becomes computationally infeasible. Yet, it is
+a powerful technique because it can be used to verify program correctness properties and prove absence of errors [25, 26].
+
 
 === Needs to change just basically what i do believe and need to see if the sources back it up
 As the base approach and tooling have largely remained static the large innovations in modern day static analysis is rules creation and fine tuning. Approaches like adding temporal analysis or creating more accurate rules that bring up less false positives when flagging bad code through the use of machine learning are key innovations. Due to the nature of these tools they've been created assuming a base level of developer confidence and putting trust in developers to know when they can and should break rules. This flexibility is a key component as to why these tools are successful and exactly why in a research context where code quality cannot reach basic standards, it is allowing developers too much freedom and enabling bad code. 
