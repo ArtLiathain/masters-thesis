@@ -51,6 +51,13 @@ This is where both a modernisation of approach using temporal analysis and speci
 ## Datadog report 
 - Advantage of shift left
 
+## Why don’t software developers use static analysis tools to find bugs?
+- False positives and methods of display are barries to use 
+- 20 developers surveyed
+- Developers like the idea more than the use
+- Fits small codebases better larger ones have too much noise
+- Customisation is important
+
 
 
 # Wasted time

@@ -89,85 +89,23 @@ As 90% of researchers @wilson_software_2006 don't have prior programming experie
 
 This is the gap my paper is seeking to fill, to create an opinionated tool that will ensure code is written well. This is a vital tool for research software as maintainable software is extendable software which will allow research to build upon each other more quickly and easily contributing to more focus put on solving new problems rather than remaking an old one to then use.
 
-
---- Point of the section
-- Highligh current analysis methods
-- Talk about how this predominantly has a storied path
-- Issues with noisy error and false positives
-- How that when applied to research means that generally errors will slip through the cracks
-
 = Static Analysis
 Static analysis in code is a storied field in which a primary focus has always been improving code quality. The tooling is imperative in modern engineering to allow for developers to see and fix maintainability and security issues in code. Unfortunately these tools are not prevalent in the research software space when it is most important as self taught developers do not have the mental model to identify the maintainability issue that plague codebases. 
+One of the key ideas behind static analysis is abstraction. Abstraction refers to transformation of a program, called concrete program, into another program that still has some key properties of the concrete program, but is much simpler, and therefore easier to analyze.
 
-One of the key ideas behind static analysis is abstraction. Abstraction refers to
-transformation of a program, called concrete program, into another program that
-still has some key properties of the concrete program, but is much simpler, and
-therefore easier to analyze [5]. Over-approximation results when there are more
-behaviors in the abstraction than in the concrete system [5]. Under-approximation,
-on the other hand, deals with fewer behaviors than in the concrete system.
-Static analysis can be sound or unsound. Soundness guarantees that the information computed by the analysis holds for all program executions, whereas
-unsound analysis does not [11]. Static analysis can be made path, flow, and context
-sensitive by making it to distinguish between paths, order of execution of statements, and method call (call site), respectively [12]. Precision of an analysis
-approach can be measured by classifying the analysis results into three categories
-[13]: false positives, i.e., nonexistent bugs are reported as potential bugs; false
-negatives, i.e., bugs that are undiscovered; and true positives, i.e., true and discovered bug. Efficiency is related to computational complexity or cost pertaining to
-space and time requirements of the algorithms used in the analysis [5]. Precision
-and efficiency are related to each other, i.e., a precise analysis is more costly and
-vice versa.
+== Lint
 
-== Lint the progenitor
-
-Before modern day static analysis using Abstract syntax trees, linters were at the forefront of code quality analysis @johnson_lint_1978. 
-Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it could only parse the code as a string and relied on regex to guess if the data flow allowed certain structures to be called. The tools available limited its uses but it was still able to identify key issues such as warnings regarding suspicious type conversions, non-portable constructs, and unused or uninitialized variables. Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis using regex is too much to justify using it to analyse semantic structure in codebases and more sophisticated tools are required.
+Lint was the first ever static analysis tool created for C the programmin language @johnson_lint_1978. 
+Created for the C programming language the first linter was primary focused on an in the weeds analysis of code to identify errors cropping up syntactically and semantically in the codebase. Being the first of its kind it had limitations, it relied on the compilers front end infrastructure to run lexical and syntactical analysis on the input text, then creating an ascii file. Reading this ascii file the program was then able to identify issues in the codebase but it interpreted every token by token rather than a structured system. 
+Lint was a pivotal moment for static code analysis as it paved the way for subsequent static analysis tooling, it garnered wide use and even named a subsection of tooling "linters". While lint is important, it is clear the limitations of static analysis only considering tokens is too much to justify using it to conduct project level analysis.
 
 == Modern Approaches
-=== Data Flow analysis
-The most popular static analysis technique. By constructing a graph-based representation of the program, called a control flow graph, and writing data flow equations for each node of the graph. These equations are then repeatedly solved to calculate output from input at each node locally until the system of equations stabilizes or reaches a fixed point. The major dataflow analyses used are reaching definitions (i.e., most recent assignment to a
-variable), live variable analysis (i.e., elimination of unused assignments), available
-expression analysis (i.e., elimination of redundant arithmetic expressions), and very
-busy expression analysis (i.e., hoisting of arithmetic expressions computed on multiple paths) [2]. At each source code location, data flow analysis records a set of facts
-about all variables currently in scope. In addition to the set of facts to be tracked, the
-analysis defines a “kills” set and a “gens” set for each block. The “kills” set describes
-the set of facts that are invalidated by execution of the statements in the block, and the
-“gens” set describes the set of facts that are generated by the execution of the statements in the block. To analyze a program, the analysis tool begins with an initial set of
-facts and updates it according to the “kills” set and “gens” set for each statement of the
-program in sequence. Although mostly used in compiler optimization @kam_global_1976 data
-flow analysis has been an integral part of most static analysis tools @gosain_static_2015.
+Building from the groundwork Lint laid out, modern methods have changed significantly in how static analysis is done. These methods include data flow analysis, syntactic pattern matching, abstract interpretation, constraint based analysis etc... @gosain_static_2015. 
+Using these methods a significantly more detailed analysis of programs can be conducted, where a move has been made from a token level analysis to a project level analysis, allowing approaches such as path analysis and reasoning about runtime behaviour. Yet even with this increase in analytic capabilities noise pollution in which there are too many error messages discouraging any actions being taking to remedy them, the same issue which plagued Lint @johnson_lint_1978 is still an issue to this day @dietrich_how_2017. Polluting the developer experience it creates friction and actively discourages developers form using the tools as it becomes more effort to sift through and find the real bugs than fixing them normally @johnson_why_2013. 
+This leads to the conclusion that the research community due to the lack of experience that research software engineers have on average @wilson_best_2014 would have more difficulties differentiating fact from fiction and discouraging them from using static analysis at all.
 
+This concretely highlights the difficulties of modern static analysis tooling in a research context. The focus on a general one size fits all tool means that it lacks the ability to be opinionated be default. The gap this presents is one where research software would have a bespoke set of curated rules reducing noise and guaranteeing improvements in code quality once executed.
 
-This technique was formalized by Cousot and Cousot [22]. It is a theory of
-semantics approximation of a program based on monotonic functions over ordered
-sets, especially lattices [23]. The main idea behind this theory is as follows: A
-concrete program, its concrete domain, and semantics operations are replaced by an
-approximate program in some abstract domain and abstract semantic operations.
-Let L be an ordered set, called a concrete set, and let L′ be another ordered set,
-called an abstract set. A function α is called an abstraction function if it maps an
-element x in the concrete set L to an element α(x) in the abstract set L′. That is,
-element α(x) in L′ is the abstraction of x in L. A function γ is called a concretization
-function if it maps an element x′ in the abstract set L′ to an element γ(x′) in the
-concrete set L. That is, element γ(x′) in L is a concretization of x′ in L′. Let L1, L2, L′
-1, and L′2 be ordered sets. The concrete semantics f is a monotonic function from
-L1 to L2. A function f′ from L′1 to L′2 is said to be a valid abstraction of f if for all x′
-in L′1, (f ∘ γ)(x′) ≤ (γ ∘ f′)(x′). The primary challenge to applying abstract interpretation is the design of the abstract domain of reasoning [24]. If the domain is too
-abstract, then precision is lost, resulting in valid programs being rejected. If the
-domain is too concrete, then analysis becomes computationally infeasible. Yet, it is
-a powerful technique because it can be used to verify program correctness properties and prove absence of errors [25, 26].
-
-
-=== Needs to change just basically what i do believe and need to see if the sources back it up
-As the base approach and tooling have largely remained static the large innovations in modern day static analysis is rules creation and fine tuning. Approaches like adding temporal analysis or creating more accurate rules that bring up less false positives when flagging bad code through the use of machine learning are key innovations. Due to the nature of these tools they've been created assuming a base level of developer confidence and putting trust in developers to know when they can and should break rules. This flexibility is a key component as to why these tools are successful and exactly why in a research context where code quality cannot reach basic standards, it is allowing developers too much freedom and enabling bad code. 
-Another key insight is that these tools have been developed with industry in mind, a gap is a direct focus on research software where different practices are normally employed and a more fine tuned approach is required. 
-
-
-== Code churn
-
-Code churn is the rate of change of lines of code in a file. A file with high churn might have an incredibly high number of additions and deletions while remaining small. This is an ATD hotspot when assessing points of interest in terms of maintainability in codebases. @farago_cumulative_2015 is paper which assess how code code churn affects the maintainability of codebases, by assessing the code churn of files in large codebases, achieving this by calculating the sum total of lines added and deleted on every file. 
-Supplementing this the maintainability of the code was measured using ColumbusQM probabilistic software quality model @noauthor_pdf_nodate. The paper was able to assess the levels of maintainability per file in proportion to the amount of code changes, drawing the conclusion that code that has high churn is code in which it is harder to maintain. This conclusion makes sense, it reaffirms that poorly architect ed code will need more changes which increases the maintainability burden of the code. The method in which the code churn was measured is quite useful and will be the approach taken for this study.
-
-Unfortunately there is one key issue with this paper, the use of ColumbusQM for assessing the maintainability of the codebase. 
-ColumbusQM is a statistical machine which takes metrics such as lines of code, styling, coupling, number of incoming invocations etc.. Aggregates them which then computes a numerical output. The metrics such as styling are something so subjective and minor that the inclusion as one of the key metrics in the evaluation underscores the whole statistical model. Taking into account all of the evaluation metrics this is a case of blind assessment where structural relations or evolutionary dependencies are not measured and only a snapshot of the codebase is measured. Compounding on this the evaluation metric for the output of the statistical model was based on developer feedback and ideas, which is unreliable and subjective. 
-
-Taking these points into account, the key takeaway from @farago_cumulative_2015 is the work on code churn particularly the methodology but the conclusions in regards to maintainability will only be used as an idea within this study.
 
 == Maintainability
 Maintainability is term used frequently in software engineering, there is no definite definition on what maintainability is but ISO25010 defines it as "The degree of effectiveness and efficiency with which a product or system can be modified to improve it, correct it or adapt it to changes in environment, and in requirements." It defines that the sub sections of maintainability are #emph[Modularity, Re-usability, Analysability, Modifiability, Testability]. @noauthor_iso_nodate
@@ -200,6 +138,16 @@ Using this method, high maintenance filsets can be labelled and evaluated as a q
 
 
 
+= Identifying maintainability hotspots
+== Code churn
+
+Code churn is the rate of change of lines of code in a file. A file with high churn might have an incredibly high number of additions and deletions while remaining small. This is an ATD hotspot when assessing points of interest in terms of maintainability in codebases. @farago_cumulative_2015 is paper which assess how code code churn affects the maintainability of codebases, by assessing the code churn of files in large codebases, achieving this by calculating the sum total of lines added and deleted on every file. 
+Supplementing this the maintainability of the code was measured using ColumbusQM probabilistic software quality model @noauthor_pdf_nodate. The paper was able to assess the levels of maintainability per file in proportion to the amount of code changes, drawing the conclusion that code that has high churn is code in which it is harder to maintain. This conclusion makes sense, it reaffirms that poorly architect ed code will need more changes which increases the maintainability burden of the code. The method in which the code churn was measured is quite useful and will be the approach taken for this study.
+
+Unfortunately there is one key issue with this paper, the use of ColumbusQM for assessing the maintainability of the codebase. 
+ColumbusQM is a statistical machine which takes metrics such as lines of code, styling, coupling, number of incoming invocations etc.. Aggregates them which then computes a numerical output. The metrics such as styling are something so subjective and minor that the inclusion as one of the key metrics in the evaluation underscores the whole statistical model. Taking into account all of the evaluation metrics this is a case of blind assessment where structural relations or evolutionary dependencies are not measured and only a snapshot of the codebase is measured. Compounding on this the evaluation metric for the output of the statistical model was based on developer feedback and ideas, which is unreliable and subjective. 
+
+Taking these points into account, the key takeaway from @farago_cumulative_2015 is the work on code churn particularly the methodology but the conclusions in regards to maintainability will only be used as an idea within this study.
 
 
 
@@ -215,6 +163,8 @@ Technical debt is a pervasive problem in research software development @hassan_c
 When dealing with technical debt there are two 
 - How to identify with smells
 - How do auto suggestions work look at tools
+
+This is after identifying
 
 
 
