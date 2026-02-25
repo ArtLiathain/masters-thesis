@@ -1,0 +1,11 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+repo_scraper = { path = "../repo_scraper/" }
+repo_analyser = { path = "../repo_analyser/" }
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+env_logger = "0.11"

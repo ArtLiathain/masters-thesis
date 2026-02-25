@@ -1,4 +1,4 @@
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, USER_AGENT};
+use reqwest::header::{HeaderMap, AUTHORIZATION, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
@@ -78,15 +78,17 @@ fn extract_count_from_header(headers: &HeaderMap) -> u32 {
             }
         }
     }
-    1 // If no link header, there is likely only 1 page/item
+    1
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn get_github_metrics_from_json(
+    json_file: String,
+    output_file: String,
+    github_token: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
-    // Load your previous JSON file
-    let file = File::open("joss_papers.json")?;
+    let file = File::open(json_file)?;
     let papers: Vec<serde_json::Value> = serde_json::from_reader(file)?;
 
     let mut extended_stats = Vec::new();
@@ -106,12 +108,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     contributor_count: contribs,
                 });
             }
-            // Sleep to respect secondary rate limits
+
             tokio::time::sleep(std::time::Duration::from_millis(700)).await;
         }
     }
 
-    let out_file = File::create("thesis_data_v2.json")?;
+    let out_file = File::create(output_file)?;
     serde_json::to_writer_pretty(out_file, &extended_stats)?;
     Ok(())
 }
