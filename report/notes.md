@@ -81,3 +81,6 @@ What do you think the results mean
 
 
 Outline methodology
+
+# Dimensionality Reduction
+PCA

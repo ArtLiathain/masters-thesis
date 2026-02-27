@@ -75,6 +75,8 @@ The core idea of the debt analysis is a 3 step process Identify high risk/churn 
 
 
 #pagebreak()
+
+= Start of Pillar 1 here
 == The current state of research software
 
 Research software is interesting for a few different reasons, its software made to investigate new ideas and concepts. This comes with one very prominent issue, researchers who are leading the way to new concepts are generally not programmers by trade, 90% of scientists are self taught in programming @wilson_best_2014. 
@@ -150,6 +152,7 @@ ColumbusQM is a statistical machine which takes metrics such as lines of code, s
 Taking these points into account, the key takeaway from @farago_cumulative_2015 is the work on code churn particularly the methodology but the conclusions in regards to maintainability will only be used as an idea within this study.
 
 
+= End of Pillar 1 here
 
 == Technical Debt
 
