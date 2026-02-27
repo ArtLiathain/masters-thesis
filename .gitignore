@@ -1,5 +1,7 @@
 # specific
 files/
+results/**
+target/**
 
 ## Core latex/pdflatex auxiliary files:
 *.aux

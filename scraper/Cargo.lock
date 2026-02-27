@@ -189,8 +189,11 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
+ "git2",
  "repo_analyser",
  "repo_scraper",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

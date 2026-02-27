@@ -13,6 +13,7 @@ enum Commands {
     Joss(JossArgs),
     Github(GithubArgs),
     Graph(GraphArgs),
+    Clone(CloneArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -48,6 +49,19 @@ struct GraphArgs {
     output: String,
 }
 
+#[derive(Parser, Debug)]
+#[command(about = "Clone and analyze GitHub repositories from a JSON file", long_about = None)]
+struct CloneArgs {
+    #[arg(short, long)]
+    input: String,
+
+    #[arg(short, long, default_value = "repo_graphs.json")]
+    output: String,
+
+    #[arg(short, long, default_value = "/tmp/repos")]
+    path: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -78,6 +92,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             repo_analyser::save_graph_to_json(&graph, &args.output)?;
             println!("Successfully saved graph to {}", args.output);
+        }
+        Commands::Clone(args) => {
+            println!("Cloning and analyzing repositories from: {}", args.input);
+            println!("Output file: {}", args.output);
+            println!("Clone path: {}", args.path);
+            
+            repo_analyser::entrypoint::analyse_github_repos(
+                args.input,
+                args.output,
+            ).await?;
+            println!("Successfully analyzed all repositories");
         }
     }
 

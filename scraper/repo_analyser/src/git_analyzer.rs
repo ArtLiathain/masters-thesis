@@ -1,4 +1,4 @@
-use git2::{DiffOptions, Repository};
+use git2::{Delta, DiffOptions, Repository};
 use log::info;
 use std::collections::HashMap;
 use std::path::Path;
@@ -8,6 +8,7 @@ use crate::file_graph::{ChangedFile, FileGraph, FileGraphBuilder};
 pub struct GitAnalyzer {
     repo_path: String,
     rename_map: HashMap<String, String>,
+    current_names: HashMap<String, String>,
 }
 
 impl GitAnalyzer {
@@ -15,6 +16,7 @@ impl GitAnalyzer {
         Self {
             repo_path,
             rename_map: HashMap::new(),
+            current_names: HashMap::new(),
         }
     }
 
@@ -29,32 +31,29 @@ impl GitAnalyzer {
             .to_string();
 
         info!("Analyzing repository: {}", repo_name);
-
-        let head = repo
-            .head()
-            .map_err(|e| format!("Failed to get HEAD: {}", e))?;
-        let head_oid = head.target().ok_or("HEAD has no target")?;
-
         let mut revwalk = repo
             .revwalk()
-            .map_err(|e| format!("Failed to create revwalk: {}", e))?;
-        revwalk
-            .push(head_oid)
-            .map_err(|e| format!("Failed to push HEAD: {}", e))?;
+            .map_err(|err| format!("Error creating revwalk: {}", err))?;
 
+        revwalk
+            .push_head()
+            .map_err(|err| format!("Error pushing revwalk {}", err))?;
+        revwalk
+            .set_sorting(git2::Sort::TIME | git2::Sort::REVERSE)
+            .map_err(|err| format!("Sorting failed {}", err))?;
         let mut builder = FileGraphBuilder::new(repo_name);
+
         let mut commit_count = 0;
 
-        for oid in revwalk {
-            let oid = oid.map_err(|e| format!("Failed to get commit oid: {}", e))?;
+        for rev in revwalk {
+            let current_commit = rev.map_err(|err| format!("Error unwrapping revwalk:{}", err))?;
             let commit = repo
-                .find_commit(oid)
+                .find_commit(current_commit)
                 .map_err(|e| format!("Failed to find commit: {}", e))?;
-
             let changed_files = self.get_changed_files(&repo, &commit)?;
-
             if !changed_files.is_empty() {
-                builder.add_commit(&changed_files);
+                let commit_hash = commit.id().to_string();
+                builder.add_commit(&changed_files, Some(&commit_hash));
             }
 
             commit_count += 1;
@@ -102,24 +101,32 @@ impl GitAnalyzer {
             .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))
             .map_err(|e| format!("Failed to get diff: {}", e))?;
 
-        let mut changed_files = Vec::new();
+        let mut commit_path_to_canonical: HashMap<String, String> = HashMap::new();
         let mut new_renames = Vec::new();
+        let mut commit_paths = Vec::new();
+        let mut deleted_paths = Vec::new();
 
         diff.foreach(
-            &mut |_, _| true,
+            &mut |delta, _| {
+                if delta.status() == Delta::Deleted {
+                    if let Some(path) = delta.old_file().path() {
+                        deleted_paths.push(path.to_string_lossy().to_string());
+                    }
+                }
+                true
+            },
             None,
             Some(&mut |delta, _| {
                 if let Some(path) = delta.new_file().path() {
                     let path_str = path.to_string_lossy().to_string();
+                    commit_paths.push(path_str.clone());
 
                     if let Some(old_path) = delta.old_file().path() {
                         let old_path_str = old_path.to_string_lossy().to_string();
                         if old_path_str != path_str {
-                            new_renames.push((old_path_str, path_str.clone()));
+                            new_renames.push((old_path_str, path_str));
                         }
                     }
-
-                    changed_files.push(path_str);
                 }
                 true
             }),
@@ -128,10 +135,30 @@ impl GitAnalyzer {
         .map_err(|e| format!("Failed to iterate diff: {}", e))?;
 
         for (old_path, new_path) in new_renames {
-            self.rename_map.insert(old_path, new_path);
+            self.rename_map.insert(old_path.clone(), new_path.clone());
+            self.current_names.insert(old_path, new_path.clone());
+            self.current_names
+                .insert(new_path.clone(), new_path.clone());
+            commit_path_to_canonical.insert(new_path.clone(), new_path);
         }
 
-        let mut file_stats: HashMap<String, (u32, u32)> = HashMap::new();
+        for path_str in &commit_paths {
+            if commit_path_to_canonical.contains_key(path_str) {
+                continue;
+            }
+            let canonical = self
+                .current_names
+                .get(path_str)
+                .cloned()
+                .unwrap_or_else(|| path_str.clone());
+            commit_path_to_canonical.insert(path_str.clone(), canonical);
+        }
+
+        let mut file_stats: HashMap<String, (u32, u32, bool)> = HashMap::new();
+
+        for deleted in &deleted_paths {
+            file_stats.entry(deleted.clone()).or_insert((0, 0, true));
+        }
 
         diff.foreach(
             &mut |_, _| true,
@@ -140,7 +167,7 @@ impl GitAnalyzer {
             Some(&mut |delta, _hunk, line| {
                 if let Some(path) = delta.new_file().path() {
                     let path_str = path.to_string_lossy().to_string();
-                    let stats = file_stats.entry(path_str).or_insert((0, 0));
+                    let stats = file_stats.entry(path_str).or_insert((0, 0, false));
                     if line.origin() == '+' {
                         stats.0 += 1;
                     } else if line.origin() == '-' {
@@ -152,15 +179,17 @@ impl GitAnalyzer {
         )
         .map_err(|e| format!("Failed to count lines: {}", e))?;
 
-        let result: Vec<ChangedFile> = changed_files
+        let result: Vec<ChangedFile> = commit_path_to_canonical
             .into_iter()
-            .filter_map(|path| {
-                let (additions, deletions) = file_stats.remove(&path).unwrap_or((0, 0));
-                Some(ChangedFile {
-                    path,
+            .map(|(commit_path, canonical_path)| {
+                let (additions, deletions, is_deleted) =
+                    file_stats.remove(&commit_path).unwrap_or((0, 0, false));
+                ChangedFile {
+                    path: canonical_path,
                     additions,
                     deletions,
-                })
+                    is_deleted,
+                }
             })
             .collect();
 

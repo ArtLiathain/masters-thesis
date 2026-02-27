@@ -1,3 +1,4 @@
+pub mod entrypoint;
 pub mod file_graph;
 pub mod git_analyzer;
 
