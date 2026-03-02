@@ -6,14 +6,20 @@ use std::{
 
 use crate::GitAnalyzer;
 
+fn extract_repo_name(url: &str) -> Option<String> {
+    url.split("github.com/")
+        .nth(1)?
+        .split('/')
+        .last()
+        .map(|s| s.trim_end_matches(".git").to_string())
+}
+
 pub async fn analyse_github_repos(
     json_file: String,
-    output_file: String,
+    output_file_location: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open(json_file)?;
     let repos: Vec<serde_json::Value> = serde_json::from_reader(file)?;
-
-    let mut extended_stats = Vec::new();
 
     let path = Path::new("/tmp/repoToAnalyse");
     for repo in repos {
@@ -27,15 +33,24 @@ pub async fn analyse_github_repos(
             let mut analyser = GitAnalyzer::new(path.display().to_string());
 
             match analyser.analyze() {
-                Ok(file_graph) => {
-                    extended_stats.push(file_graph);
+                Ok(mut file_graph) => {
+                    let repo_name =
+                        extract_repo_name(repo_url).unwrap_or_else(|| "unknown".to_string());
+
+                    let out_file = File::create(
+                        output_file_location.clone().to_string()
+                            + "/"
+                            + &repo_name.clone().to_string()
+                            + ".json",
+                    )?;
+                    file_graph.repo = repo_name;
+                    serde_json::to_writer_pretty(out_file, &file_graph)?;
+                    println!("Wrote repos to {}", output_file_location);
                 }
                 Err(err) => println!("Error analysing {} repo : {}", repo_url, err),
             }
         }
     }
 
-    let out_file = File::create(output_file)?;
-    serde_json::to_writer_pretty(out_file, &extended_stats)?;
     Ok(())
 }

@@ -1,4 +1,4 @@
-use git2::{Delta, DiffOptions, Repository};
+use git2::{Delta, DiffFindOptions, DiffOptions, Repository};
 use log::info;
 use std::collections::HashMap;
 use std::path::Path;
@@ -97,9 +97,14 @@ impl GitAnalyzer {
             .include_untracked(true)
             .recurse_untracked_dirs(true);
 
-        let diff = repo
+        let mut diff = repo
             .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))
             .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+        let mut find_opts = DiffFindOptions::new();
+        find_opts.renames(true);
+        diff.find_similar(Some(&mut find_opts))
+            .map_err(|e| format!("Failed to find similar: {}", e))?;
 
         let mut commit_path_to_canonical: HashMap<String, String> = HashMap::new();
         let mut new_renames = Vec::new();
@@ -121,9 +126,9 @@ impl GitAnalyzer {
                     let path_str = path.to_string_lossy().to_string();
                     commit_paths.push(path_str.clone());
 
-                    if let Some(old_path) = delta.old_file().path() {
-                        let old_path_str = old_path.to_string_lossy().to_string();
-                        if old_path_str != path_str {
+                    if delta.status() == Delta::Renamed {
+                        if let Some(old_path) = delta.old_file().path() {
+                            let old_path_str = old_path.to_string_lossy().to_string();
                             new_renames.push((old_path_str, path_str));
                         }
                     }
