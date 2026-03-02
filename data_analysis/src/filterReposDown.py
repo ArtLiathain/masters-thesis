@@ -7,7 +7,6 @@ import seaborn as sns
 with open("thesis_data_v2.json", "r") as f:
     df = pd.DataFrame(json.load(f))
 
-# 1. Identify the outlier
 
 OUTLIER_MAX_COMMITS = 5000
 MIN_COMMITS = 100

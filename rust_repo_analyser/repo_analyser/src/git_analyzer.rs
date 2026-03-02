@@ -3,7 +3,7 @@ use log::info;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::file_graph::{ChangedFile, FileGraph, FileGraphBuilder};
+use crate::file_graph::{ChangedFile, FileGraphBuilder, FileGraphBuilder};
 
 pub struct GitAnalyzer {
     repo_path: String,
@@ -20,7 +20,7 @@ impl GitAnalyzer {
         }
     }
 
-    pub fn analyze(&mut self) -> Result<FileGraph, String> {
+    pub fn analyze(&mut self) -> Result<FileGraphBuilder, String> {
         let repo = Repository::open(&self.repo_path)
             .map_err(|e| format!("Failed to open repository: {}", e))?;
 
