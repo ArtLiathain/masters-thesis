@@ -32,12 +32,18 @@ def calculate_valid_partners(edges, commit_count):
     if partner_count <= 0:
         return 0, 0, 0
     commit_threshold = min(
-        int(TARGET_COMMIT_THRESHOLD * commit_count), TARGET_COMMIT_MAXIMUM)
+        int(TARGET_COMMIT_THRESHOLD * commit_count), TARGET_COMMIT_MAXIMUM
+    )
     weight_threshold = min(
-        int(EDGE_WEIGHT_THRESHOLD * commit_count), EDGE_WEIGHT_MAXIMUM)
+        int(EDGE_WEIGHT_THRESHOLD * commit_count), EDGE_WEIGHT_MAXIMUM
+    )
 
-    filtered_edges = [edge for edge in edges if edge["target_commits"]
-                      >= commit_threshold or edge["weight"] >= weight_threshold]
+    filtered_edges = [
+        edge
+        for edge in edges
+        if edge["target_commits"] >= commit_threshold
+        or edge["weight"] >= weight_threshold
+    ]
     coupling_ratios = [
         compute_coupling_ratio(e["weight"], e["target_commits"]) for e in filtered_edges
     ]
@@ -75,6 +81,7 @@ def compute_hub_scores(nodes, commit_count):
             edges, commit_count)
         # Hub score: partner count * average coupling
         hub_score = partner_count * avg_coupling
+        deleted = node.get("deleted_at_commit") is not None
         results.append(
             {
                 "path": path,
@@ -86,6 +93,7 @@ def compute_hub_scores(nodes, commit_count):
                 "avg_coupling": round(avg_coupling, 4),
                 "max_coupling": round(max_coupling, 4),
                 "hub_score": round(hub_score, 4),
+                "deleted": deleted,
             }
         )
 
@@ -191,6 +199,7 @@ def main():
                     "partner_count": file_data["partner_count"],
                     "avg_coupling": file_data["avg_coupling"],
                     "hub_score": file_data["hub_score"],
+                    "deleted": file_data["deleted"],
                 }
             )
 
