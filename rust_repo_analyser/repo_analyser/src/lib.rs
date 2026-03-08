@@ -8,7 +8,9 @@ pub use git_analyzer::GitAnalyzer;
 use std::fs::File;
 use std::io::Write;
 
-pub fn save_graph_to_json(graph: &FileGraphBuilder, output_path: &str) -> Result<(), String> {
+use crate::file_graph::FileGraph;
+
+pub fn save_graph_to_json(graph: &FileGraph, output_path: &str) -> Result<(), String> {
     let json = serde_json::to_string_pretty(graph)
         .map_err(|e| format!("Failed to serialize graph: {}", e))?;
 

@@ -2,9 +2,15 @@ import pandas as pd
 import json
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
 
-# 1. Load your data
-with open("thesis_data_v2.json", "r") as f:
+parser = argparse.ArgumentParser(
+    description="Filter repositories based on commit and contributor thresholds.")
+parser.add_argument("input_file", help="Path to input JSON file")
+parser.add_argument("output_file", help="Path to output JSON file")
+args = parser.parse_args()
+
+with open(args.input_file, "r") as f:
     df = pd.DataFrame(json.load(f))
 
 
@@ -41,8 +47,10 @@ sns.set_theme(style="whitegrid")
 fig, axes = plt.subplots(2, 2, figsize=(15, 12))
 
 # --- Plot 1: Commit Distribution ---
-sns.histplot(df_final["commit_count"], kde=True, ax=axes[0, 0], color="#2c3e50")
-axes[0, 0].set_title("A. Distribution of Commit Counts", fontsize=15, fontweight="bold")
+sns.histplot(df_final["commit_count"], kde=True,
+             ax=axes[0, 0], color="#2c3e50")
+axes[0, 0].set_title("A. Distribution of Commit Counts",
+                     fontsize=15, fontweight="bold")
 axes[0, 0].set_xlabel("Number of Commits")
 
 # --- Plot 2: Contributor Distribution ---
@@ -54,7 +62,8 @@ sns.histplot(
     color="#e74c3c",
     bins=range(1, df_final["contributor_count"].max() + 2),
 )
-axes[0, 1].set_title("B. Distribution of Contributors", fontsize=15, fontweight="bold")
+axes[0, 1].set_title("B. Distribution of Contributors",
+                     fontsize=15, fontweight="bold")
 axes[0, 1].set_xlabel("Number of Contributors")
 
 # --- Plot 3: Commits vs Contributors (Log-Log) ---
@@ -69,7 +78,8 @@ sns.scatterplot(
 )
 axes[1, 0].set_xscale("log")
 axes[1, 0].set_yscale("log")
-axes[1, 0].set_title("C. Commit vs Contributor Density", fontsize=15, fontweight="bold")
+axes[1, 0].set_title("C. Commit vs Contributor Density",
+                     fontsize=15, fontweight="bold")
 axes[1, 0].set_xlabel("Contributors (Log Scale)")
 axes[1, 0].set_ylabel("Commits (Log Scale)")
 
@@ -84,9 +94,10 @@ plt.tight_layout()
 plt.savefig("pre_filter_distribution.png", dpi=300)
 print("Graph saved as 'pre_filter_distribution.png'")
 
-df_final.to_json("filtered_repos.json", orient="records", indent=2)
-print("Filtered repos saved to 'filtered_repos.json'")
+df_final.to_json(args.output_file, orient="records", indent=2)
+print(f"Filtered repos saved to '{args.output_file}'")
 
 # Print some quick stats for your analysis text
 print("\n--- Summary Statistics (Pre-Filtering) ---")
-print(df_final[["commit_count", "contributor_count", "size_kb"]].describe().to_string())
+print(df_final[["commit_count", "contributor_count",
+      "size_kb"]].describe().to_string())

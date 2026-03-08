@@ -86,10 +86,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Graph(args) => {
             println!("Analyzing repository: {}", args.repo);
             println!("Output file: {}", args.output);
-            
+
             let mut analyzer = repo_analyser::GitAnalyzer::new(args.repo);
             let graph = analyzer.analyze()?;
-            
+
             repo_analyser::save_graph_to_json(&graph, &args.output)?;
             println!("Successfully saved graph to {}", args.output);
         }
@@ -97,11 +97,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Cloning and analyzing repositories from: {}", args.input);
             println!("Output file: {}", args.output);
             println!("Clone path: {}", args.path);
-            
-            repo_analyser::entrypoint::analyse_github_repos(
-                args.input,
-                args.output,
-            ).await?;
+
+            repo_analyser::entrypoint::analyse_github_repos(args.input, args.output, args.path)
+                .await?;
             println!("Successfully analyzed all repositories");
         }
     }

@@ -66,6 +66,25 @@ This is where both a modernisation of approach using temporal analysis and speci
 ## For later
 - Martin fowler about small code changes -> not the best solution but what researchers need
 
+# Learning a static analyzer from data
+https://files.sri.inf.ethz.ch/website/papers/cav17-pa.pdf
+
+### Focus 
+To create rules for a static analyser to better help inference in cases of purely static analysis inference
+
+### Method
+Take a 20k sample set of js test cases, using the result as ground truth train a decision tree model to identify the result without running the code
+Combining this with an oracle with a similar principle to GANs where the oracle generates counterexamples based off incorrect results from the discriminator
+
+
+### Output and things of note
+This does set a good precedent for rules generated empirically that can trump expertly derived rule
+It outperformed metas Flow model at the time
+
+### Issues
+None so far the paper seems solid enough, but the only purpose in mentioning it is that it stands to reason that other areas could benefit from empirically derived rules over expert opinions
+
+
 
 # When reading papers 
 What is the aim of the paper

@@ -1,4 +1,4 @@
-use reqwest::header::{HeaderMap, AUTHORIZATION, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
@@ -21,16 +21,23 @@ async fn get_github_metrics(
     client: &reqwest::Client,
     repo_url: &str,
     token: &str,
-) -> Result<(u64, u32, u32), Box<dyn std::error::Error>> {
-    // 1. Parse "https://github.com/owner/repo" into "owner/repo"
+) -> Result<(u64, u32, u32), Box<dyn std::error::Error + Send + Sync>> {
     let path = repo_url
         .trim_end_matches('/')
         .split("github.com/")
-        .collect::<Vec<&str>>()[1];
+        .collect::<Vec<&str>>();
+
+    let path = path
+        .get(1)
+        .ok_or("Invalid GitHub URL: could not extract owner/repo")?;
+
+    let user_agent = HeaderValue::from_static("Rust-Thesis-Scraper");
+    let auth = HeaderValue::from_str(&format!("Bearer {}", token))
+        .map_err(|e| format!("Invalid authorization token: {}", e))?;
 
     let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, "Rust-Thesis-Scraper".parse().unwrap());
-    headers.insert(AUTHORIZATION, format!("Bearer {}", token).parse().unwrap());
+    headers.insert(USER_AGENT, user_agent);
+    headers.insert(AUTHORIZATION, auth);
 
     // 2. Get Size from the General Repo API
     let repo_info: GitHubRepoResponse = client
@@ -100,15 +107,17 @@ pub async fn get_github_metrics_from_json(
             if let Ok((size, commits, contribs)) =
                 get_github_metrics(&client, repo, github_token).await
             {
+                let title = p["title"].as_str().unwrap_or("Unknown");
                 extended_stats.push(RepoStats {
-                    title: p["title"].as_str().unwrap().to_string(),
+                    title: title.to_string(),
                     repo_url: repo.to_string(),
                     size_kb: size,
                     commit_count: commits,
                     contributor_count: contribs,
                 });
+            } else {
+                eprintln!("Failed to fetch metrics for: {}", repo);
             }
-
             tokio::time::sleep(std::time::Duration::from_millis(700)).await;
         }
     }
