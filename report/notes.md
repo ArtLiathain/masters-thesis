@@ -85,6 +85,8 @@ It outperformed metas Flow model at the time
 None so far the paper seems solid enough, but the only purpose in mentioning it is that it stands to reason that other areas could benefit from empirically derived rules over expert opinions
 
 
+# 
+
 
 # When reading papers 
 What is the aim of the paper

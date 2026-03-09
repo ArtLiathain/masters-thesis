@@ -153,7 +153,41 @@ Taking these points into account, the key takeaway from @farago_cumulative_2015 
 
 
 = End of Pillar 1 here
+#pagebreak()
 
+= Pillar 2
+== Concepts to cover
+- The value of empirical evidence over expert opinion in terms of static analysis and research as a whole (2 references already)
+- How the decision tree/random forest is probably the best approach for creating the rules
+- Background on decision tree and random forest in the context of supervised on unsupervised learning
+- AST representation of the code and how that is important in this context
+
+= The current problem with static analysers
+When discussing the issues with static analysers before, the warning pollution was a key issue detracting from the user experience of static analysers @dietric_how_2017. It pushes developers from tackling problems as false positives are a painful process to sift through. 
+This paper poses that the key issue with the analysers in the case of false positives is not the rules but how they were derived. Historically most academic research in software engineering has required significant empirical evidence to be considered by industry @Empirical, yet the current landscape is dominated by expert analysed rules. 
+Rules from experts can only be taken as subjective opinion, contributing to warnings over a hard line on what should be allowed in codebases.
+Previous research @inference has shown that machine learning in the context of statics analysis can lead to improvements on inference rules in javascript. Taking a sample set of 20,000 javascript test cases the study used a decision tree based algorithm to create a set of rules analytically that had an increased efficiency in predicting the outcomes of corner cases over the previously established expert rules.
+Setting a precedent that the expert derived rules are not a perfect set of rules and that empirically derived rules have room to improve the quality of static analysis tooling. 
+
+
+
+
+= Machine learning
+Machine learning is a pivotal technology to use within the context of this paper. It allows rigorous statistical analysis to be carried out to create an objective metric for the maintainability rules. Machine learning is based on the principle of minimising loss, creating a method of training an algorithm to optimise for the lowest loss through gradient descent allows for the code to be self improving within the problem domain. There are many approaches and models available but due to an empahasis put on human interprability decision trees and random forest best fits this use case. 
+== Decision Trees
+Decision trees are a standout choice when it comes to an interpretable machine learning model. They consistently rank highly within classifier models while remaining a binary tree aiding human understanding @DecisionTrees.Decision trees represent classifiers as hierarchical IF-THEN rules, where each root-to-leaf path corresponds to a conjunction of feature thresholds that directly maps to executable static analysis checks. 
+A concrete example of this would be IF nesting > 3 THEN unmaintainable, in the case of nesting being over 3 then the code would be labeled unmaintainable. This simplistic example would be scaled up much larger with many more decision and leaf nodes creating a classifier based off simple decisions at each step. 
+A key feature of decision tree that aids with their use within the static analysis context is rules extraction @ProgramsforMachineLearning, this approach has been demonstrated where trees trained to identify maintainability problems within codebases have produced classifiers with an average 92% accuracy on the PROMISE dataset @randomforest. The caveat to this being that the PROMISE dataset is an old dataset and is focused only on the NASA type code, where certain biases in style could have been exploited by the algorithms.
+== Random Forest
+Random forest is an approach very similar to decision trees it relies on creating a forest of decision trees each of which vote on the outcome to choose a class for the classifier. This method leverages the law of large numbers to deal with the overfitting problem in decision trees as well as reducing the error rate of the outcome as a whole @randomforestfoundational. 
+
+
+
+
+
+== End of Pillar 2
+---
+Might not be needed
 == Technical Debt
 
 Technical debt (TD) was first defined as "Shipping first time code is like going into debt. A little debt speeds development so long as it is paid back promptly with a rewrite... The danger occurs when the debt is not repaid. Every minute spent on not-quite-right code counts as interest on that debt. Entire engineering organizations can be brought to a stand-still under the debt load of an unconsolidated implementation, object-oriented or otherwise." By Ward Cunningham @noauthor_c2comdocoopsla92html_nodate. 
@@ -167,7 +201,7 @@ When dealing with technical debt there are two
 - How to identify with smells
 - How do auto suggestions work look at tools
 
-This is after identifying
+This is after identifying 
 
 
 
