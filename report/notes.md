@@ -105,3 +105,19 @@ Outline methodology
 
 # Dimensionality Reduction
 PCA
+
+
+# Proofreading
+- Reading aloud
+- Change font size
+- Think of debating a 4 year old why why why
+
+# Lit review
+- After methodology add purposive paragraphs to direct towards the idea i have
+
+
+Fixes
+- Check wilson 2006 and 2016 sources
+- Connecting sentences -> 
+- Static analysis -> Why are we going for static analysis justify why we want to do this. Talk about training and why we're not doing other approaches
+
