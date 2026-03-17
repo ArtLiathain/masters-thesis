@@ -52,31 +52,8 @@ Can opinionated objective rules be derived from historical and static analysis o
 
 Do these rules notably increase code quality
 
-=== Thoughts on structure
-
-The core idea of the debt analysis is a 3 step process Identify high risk/churn code areas, use a tool maybe machine learning to analyse and understand the code, derive rules from both texts such as architectural smells that are correlated to high #emph[debt interest] @xiao_identifying_2016 
-
-= Background on Identifying technical debt
-- Current methods to identify debt 
-  - smells
-  - machine learning
-- Impact debt has on code in the long run
-- How do the suggestions work
-- AST and how they work
-  - Ruff
-  - Sonarqube etc
-- (MAYBE) Talk about machine learning in pattern analysis for detecting high bug spots for the code and repeating issues.
-
-== What needs to be completed now
-- Static Analysis methods
-- Code churn detection
-
-
-
-
 #pagebreak()
-
-= Start of Pillar 1 here
+= Background Research
 == The current state of research software
 
 Research software is interesting for a few different reasons, its software made to investigate new ideas and concepts. This comes with one very prominent issue, researchers who are leading the way to new concepts are generally not programmers by trade, 90% of scientists are self taught in programming @wilson_best_2014. 
@@ -152,57 +129,55 @@ ColumbusQM is a statistical machine which takes metrics such as lines of code, s
 Taking these points into account, the key takeaway from @farago_cumulative_2015 is the work on code churn particularly the methodology but the conclusions in regards to maintainability will only be used as an idea within this study.
 
 
-= End of Pillar 1 here
-#pagebreak()
 
-= Pillar 2
-== Concepts to cover
-- The value of empirical evidence over expert opinion in terms of static analysis and research as a whole (2 references already)
-- How the decision tree/random forest is probably the best approach for creating the rules
-- Background on decision tree and random forest in the context of supervised on unsupervised learning
-- AST representation of the code and how that is important in this context
-
-= The current problem with static analysers
-When discussing the issues with static analysers before, the warning pollution was a key issue detracting from the user experience of static analysers @dietric_how_2017. It pushes developers from tackling problems as false positives are a painful process to sift through. 
-This paper poses that the key issue with the analysers in the case of false positives is not the rules but how they were derived. Historically most academic research in software engineering has required significant empirical evidence to be considered by industry @Empirical, yet the current landscape is dominated by expert analysed rules. 
+= The current problem with static analysers(maybe ghost source? Its quite a good one)
+When discussing the issues with static analysers before, the warning pollution was a key issue detracting from the user experience of static analysers @johnson_why_2013. It pushes developers from tackling problems as false positives are a painful process to sift through. 
+This paper poses that the key issue with the analysers in the case of false positives is not the rules but how they were derived. Historically most academic research in software engineering has required significant empirical evidence to be considered by industry @weyuker_empirical_2011, yet the current landscape is dominated by expert analysed rules. 
 Rules from experts can only be taken as subjective opinion, contributing to warnings over a hard line on what should be allowed in codebases.
-Previous research @inference has shown that machine learning in the context of statics analysis can lead to improvements on inference rules in javascript. Taking a sample set of 20,000 javascript test cases the study used a decision tree based algorithm to create a set of rules analytically that had an increased efficiency in predicting the outcomes of corner cases over the previously established expert rules.
-Setting a precedent that the expert derived rules are not a perfect set of rules and that empirically derived rules have room to improve the quality of static analysis tooling. 
-
-
+Previous research @bielik_learning_2017 has shown that machine learning in the context of statics analysis can lead to improvements on inference rules in javascript. Taking a sample set of 20,000 javascript test cases the study used a decision tree based algorithm to create a set of rules analytically that had an increased efficiency in predicting the outcomes of corner cases over the previously established expert rules. Now this did rely on a deterministic objective problem of runtime inference, which is not applicable to this problem but it set a precedent that the expert derived rules are not a perfect set of rules and that empirically derived rules have room to improve the quality of static analysis tooling.
 
 
 = Machine learning
-Machine learning is a pivotal technology to use within the context of this paper. It allows rigorous statistical analysis to be carried out to create an objective metric for the maintainability rules. Machine learning is based on the principle of minimising loss, creating a method of training an algorithm to optimise for the lowest loss through gradient descent allows for the code to be self improving within the problem domain. There are many approaches and models available but due to an empahasis put on human interprability decision trees and random forest best fits this use case. 
+Machine learning is a pivotal technology within the context of this paper. It allows rigorous statistical analysis to be carried out to create objective metrics for the maintainability rules. Machine learning is based on the principle of minimising loss, creating a method of training an algorithm to optimise for the lowest loss through gradient descent allows for the code to be self improving within the problem domain. There are many approaches and models available but due to an emphasis put on human readability decision trees and random forest best fits this use case. 
+
+
 == Decision Trees
-Decision trees are a standout choice when it comes to an interpretable machine learning model. They consistently rank highly within classifier models while remaining a binary tree aiding human understanding @DecisionTrees.Decision trees represent classifiers as hierarchical IF-THEN rules, where each root-to-leaf path corresponds to a conjunction of feature thresholds that directly maps to executable static analysis checks. 
+Decision trees are a standout choice when it comes to an interpretable machine learning models. They consistently rank highly within classifier models while still supporting rule extraction which aids readability. Decision trees represent classifiers as hierarchical IF-THEN rules, where each root-to-leaf path corresponds to a conjunction of feature thresholds that directly maps to executable static analysis checks.
 A concrete example of this would be IF nesting > 3 THEN unmaintainable, in the case of nesting being over 3 then the code would be labeled unmaintainable. This simplistic example would be scaled up much larger with many more decision and leaf nodes creating a classifier based off simple decisions at each step. 
-A key feature of decision tree that aids with their use within the static analysis context is rules extraction @ProgramsforMachineLearning, this approach has been demonstrated where trees trained to identify maintainability problems within codebases have produced classifiers with an average 92% accuracy on the PROMISE dataset @randomforest. The caveat to this being that the PROMISE dataset is an old dataset and is focused only on the NASA type code, where certain biases in style could have been exploited by the algorithms.
+Naturally there are some drawbacks to this approach, most prominently is the overfitting problem. An overfitted model reflects the structure of the training data set too closely. Even though a model appears to be accurate on training data,, it may be much less accurate when applied to a current data set @khoshgoftaar_controlling_2001.
+This issue restricts their usage in current maintainability prediction methods, @bluemke_experiments_2023 shows that decisions trees can prove useful in a baseline analysis of maintainability predictors.
+Despite limitations, DT rules provide the simple interpretability missing from random forests, enabling manual validation of learned static checks against domain knowledge. Pruning or ensemble averaging in random forests addresses overfitting to a degree while retaining path-derived rules for analysis. @quinlan_c45_1993
 == Random Forest
-Random forest is an approach very similar to decision trees it relies on creating a forest of decision trees each of which vote on the outcome to choose a class for the classifier. This method leverages the law of large numbers to deal with the overfitting problem in decision trees as well as reducing the error rate of the outcome as a whole @randomforestfoundational. 
+Random forest is an approach derived from decision trees and arguably one of the most popular classifier machine learning approaches. Relying on creating a set of decision trees (called a forest) each of which vote on the outcome to choose a class for the classifier, it creates a method that leverages the law of large numbers to deal with the overfitting problem in decision trees @breiman_random_2001 in addition to increasing accuracy. The method in which overfitting can be largely ignored is that there are many trees voting, every one could potentially be overfitted yet the whole forest remains generalised to the problem as every tree would be overfitted to a different feature.
+Random forests average better results theoretically @breiman_random_2001 and practically in the field of maintainability research @bluemke_experiments_2023 over decision trees. The key drawbacks to random forests are both the increased computational costs and the black box view when it comes to readability. 
+Modern research @haddouchi_forest-ore_2025 has made progress in creating methods of rule extraction for random forests as before the size of the forests rendered them as a black box approach. @haddouchi_forest-ore_2025 focused on deriving a rule ensemble based on the calculated weighted importance of the trees. Allowing for a dimension reductionality method to be applied to the forest. Within the study a factor of 300x reduction to the trees per class was observed while retaining a 93% accuracy compared to the full forests 95% accuracy. Leveraging this rule extraction method for random forests is pivotal to create a rule set that properly generalises across projects while retaining the core idea and performance of the model and keeping with the core ideal of readability.
 
 
+== Applications to maintainability detection
+The application of machine learning to maintainability detection enables a data-driven approach to identifying code structures that hinder long-term quality and evolution. Traditional static analysis methods rely on human-curated heuristics, which often fail to generalise across diverse projects or languages. In contrast, machine learning can infer maintainability rules directly from empirical evidence, allowing patterns of poor or high maintainability to emerge statistically rather than being predefined. Which has been shown to outperform human experts @borg_ghost_2024.
+SotA models achieve impressive results in classification of low maintainability files: @bertrand_replication_2023 achieved a 82% F1 score with a AdaBoost classifier and @bluemke_experiments_2023 achieved an F1 score of 93% using a potentially more readable random forest classifier. Both of these results are very impressive although a key fault with both are the reliance on human experts to create a ground truth of annotated data. PROMISE @noauthor_pdf_nodate-1 and MainData @schnappinger_defining_2020 were the datasets used in both these studies, relying on historical evidence along with expert opinion both fall victim to two issues, scale and objectivity. Datasets such as these are an arduous process and in the end result in a dataset that is by design older and not able to reflect the current coding landscape. Technology changes too quickly and datasets such as these rely on immutability to allow models to learn whereas the landscape is anything but, which was the key motivation for an algorithmic approach to labelling and analysis to create a dataset based on current codebases at scale.
 
+A crucial step in applying these machine learning to maintainability detection is the transformation of source code into a machine-readable representation. Abstract Syntax Trees (ASTs) provide this structure, encoding the syntactic and hierarchical relationships between program elements. By traversing or analysing the AST, a wide range of numerical and categorical features can be extracted: such as nesting depth, branching density, or average method size, which serve as the input features for machine learning models @bertrand_building_2022.
+Various learning models can then be trained on these AST-derived metrics to classify code fragments according to maintainability characteristics. 
 
+= Methodology
 
-== End of Pillar 2
----
-Might not be needed
-== Technical Debt
+This study follows an empirical, data-driven pipeline to derive static analysis rules from real-world research software. The process is divided into four primary phases. First, we aggregate a dataset of C++ repositories from the Journal of Open Source Software (JOSS). Second, we employ a custom-built tool to extract evolutionary coupling metrics and calculate a Hub Score for each file, providing an objective "High Risk" or "Low Risk" label. Third, these labeled files are used to train a Decision Tree model to identify the structural characteristics of high-risk code. Finally, the logical paths within the trained model are translated into human-readable static analysis rules, bridging the gap between historical developer behavior and proactive code quality standards.
 
-Technical debt (TD) was first defined as "Shipping first time code is like going into debt. A little debt speeds development so long as it is paid back promptly with a rewrite... The danger occurs when the debt is not repaid. Every minute spent on not-quite-right code counts as interest on that debt. Entire engineering organizations can be brought to a stand-still under the debt load of an unconsolidated implementation, object-oriented or otherwise." By Ward Cunningham @noauthor_c2comdocoopsla92html_nodate. 
-In the following years research has shown TD is not a singular type of problem and there are many forms to it, the five most prevalent types of TD are #text(weight:"bold")[Design debt, Test debt, Code debt, Architecture debt and Documentation debt] this was extracted from 700+ surveys across 6 countries @ramac_prevalence_2022. The artifacts used to identify design debt, code debt and architectural debt have significant overlap and these artifacts exhibit behaviours similar to Architectural Technical Debt (ATD)@xiao_identifying_2016. 
-Similarly to Maintainability, this paper defines Technical debt in regards to design, architecture and code as ATD and will be the primary focus of this paper.
+== Dataset Selection and Acquisition
+The primary goal of this paper is to derive objective rules to raise the level of coding standards in the research software scene. This lends itself to using research software as the dataset. JOSS @noauthor_build_nodate is an open source website which allows for researchers to submit open source research project, this is a dataset which provides a curated set of peer-reviewed research software, ensuring domain-specific relevance to use as each repository is guaranteed to be a research repo. To ensure sufficient architectural complexity, projects were filtered using a purposive sampling strategy: a minimum of 4 collaborators and a commit history between 100 and 5,000 commits. C++ was selected as the target language due to its prevalence in high-performance research computing and the inherent risk associated with its low-level memory operations. Thus creating a dataset which comprises sufficiently complex projects all of which have academic grounding for evaluation.
 
-Technical debt is a pervasive problem in research software development @hassan_characterising_2025 where "does it compile" is the only quality metric tracked in codebases. This means that technical debt accrues significant interest as time increases. 
+== Data Labeling 
+To categorize the dataset,automated labeling heuristics were utilised rather than traditional expert manual review. While expert opinion is often the standard for establishing "ground truth," it is difficult to scale across thousands of research repositories. Instead, we analyzed the historical behavior of each file to assign a Hub Score: a composite metric that measures a file’s "entanglement" within the project. This score is calculated based on three key factors: the number of coupled files, the average coupling ratio, and the file's overall code churn.We gathered these metrics by running a custom analysis tool over the entire commit history of each repository. The tool constructs a Co-change Graph where, Nodes represent individual files and Edges represent shared commits between files.
+The graph allows us to evaluate the coupling of each file by comparing the number of times it was modified alongside other files versus the number of times it was modified in isolation.
+(INSERT FORMULA)
+As noted by @xiao_identifying_2016, focusing primarily on modularity violations ignores other potential risk factors. However, this approach is justified by the unique scale of our study. Unlike traditional, manually-curated datasets such as PROMISE @noauthor_pdf_nodate-1 or MainData @schnappinger_defining_2020, our automated "broad-spectrum" filtering allows us to identify the most critical offenders across a significantly larger volume of data. By combining these repositories, we created a dataset that is both objective and massive in scope, providing a high-quality surface area for supervised learning using "High Risk" and "Low Risk" labels.== Feature Selection
 
-== Dealing with technical debt 
-When dealing with technical debt there are two 
-- How to identify with smells
-- How do auto suggestions work look at tools
+== Model Implementation and Training
 
-This is after identifying 
+== Rule Derivation Process
 
+== Evaluation Framework
 
 
 #bibliography("references.bib")
