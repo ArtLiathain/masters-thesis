@@ -344,9 +344,10 @@ impl Neo4jClient {
             let avg_coupling: f64 = row.get::<f64>("avg_coupling").unwrap_or(0.0);
             let file_churn: i64 = row.get::<i64>("file_churn").unwrap_or(0);
 
-            let hub_score = avg_coupling
+            let hub_score = (avg_coupling
                 * (partner_count as f64 / total_files as f64)
-                * (file_churn as f64 / total_churn as f64);
+                * (file_churn as f64 / total_churn as f64))
+                * 1000.0;
 
             updates.push((path, partner_count, avg_coupling, hub_score));
         }
