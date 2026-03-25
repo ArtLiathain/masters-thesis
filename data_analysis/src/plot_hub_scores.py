@@ -1,23 +1,70 @@
-import json
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+from neo4j import GraphDatabase
 
-INPUT_FILE = "/home/art/Development/masters-thesis/results/hub_score_summary.csv"
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 OUTPUT_DIR = "/home/art/Development/masters-thesis/results"
 
-# Load data
-df = pd.read_csv(INPUT_FILE)
+
+def get_hub_scores_from_neo4j():
+    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+    query = """
+    MATCH (f:File)
+    WHERE f.hub_score IS NOT NULL
+    RETURN f.repo as repo,
+           f.path as path,
+           f.commit_count as commit_count,
+           f.additions as additions,
+           f.deletions as deletions,
+           f.additions + f.deletions as churn,
+           f.partner_count as partner_count,
+           f.avg_coupling as avg_coupling,
+           f.hub_score as hub_score,
+           f.deleted_at_commit as deleted_at_commit
+    """
+
+    records = []
+    with driver.session() as session:
+        result = session.run(query)
+        for row in result:
+            records.append(
+                {
+                    "repo": row["repo"],
+                    "path": row["path"],
+                    "commit_count": row["commit_count"],
+                    "additions": row["additions"],
+                    "deletions": row["deletions"],
+                    "churn": row["churn"],
+                    "partner_count": row["partner_count"],
+                    "avg_coupling": row["avg_coupling"],
+                    "hub_score": row["hub_score"],
+                    "deleted": row["deleted_at_commit"] is not None,
+                }
+            )
+
+    driver.close()
+    return pd.DataFrame(records)
+
+
+df = get_hub_scores_from_neo4j()
+
+if df.empty:
+    print("No hub score data found in Neo4j")
+    exit(1)
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
 
 fig, axes = plt.subplots(2, 2, figsize=(16, 14))
 
-# Plot 1: Hub Score Distribution
-ax1 = axes[0, 0]
 active = df[~df["deleted"]]
 deleted = df[df["deleted"]]
+
+ax1 = axes[0, 0]
 ax1.hist(
     active["hub_score"],
     bins=30,
@@ -46,10 +93,7 @@ ax1.axvline(
 )
 ax1.legend()
 
-# Plot 2: Partner Count vs Average Coupling (scatter)
 ax2 = axes[0, 1]
-active = df[~df["deleted"]]
-deleted = df[df["deleted"]]
 ax2.scatter(
     active["partner_count"],
     active["avg_coupling"],
@@ -74,11 +118,11 @@ ax2.set_ylabel("Average Coupling Ratio")
 ax2.set_title("B. Partner Count vs Coupling (color = Hub Score)")
 ax2.legend()
 
-# Plot 3: Top 15 Files by Hub Score
 ax3 = axes[1, 0]
 top_15 = df.nlargest(15, "hub_score").copy()
 top_15["short_path"] = top_15["path"].apply(lambda x: os.path.basename(x))
-colors = plt.cm.Reds(top_15["hub_score"] / top_15["hub_score"].max())
+max_score = top_15["hub_score"].max()
+colors = [plt.cm.Reds(s / max_score) for s in top_15["hub_score"]]
 bars = ax3.barh(range(len(top_15)), top_15["hub_score"], color=colors)
 ax3.set_yticks(range(len(top_15)))
 ax3.set_yticklabels(top_15["short_path"], fontsize=9)
@@ -86,7 +130,6 @@ ax3.set_xlabel("Hub Score")
 ax3.set_title("C. Top 15 Most Problematic Files")
 ax3.invert_yaxis()
 
-# Add hub score values and deleted markers
 for idx, (_, row) in enumerate(top_15.iterrows()):
     label = f"{row['hub_score']:.2f}"
     if row["deleted"]:
@@ -105,10 +148,7 @@ for idx, (_, row) in enumerate(top_15.iterrows()):
             row["hub_score"] + 0.5, idx, label, va="center", fontsize=8, color="gray"
         )
 
-# Plot 4: Churn vs Hub Score
 ax4 = axes[1, 1]
-active = df[~df["deleted"]]
-deleted = df[df["deleted"]]
 scatter4 = ax4.scatter(
     active["churn"],
     active["hub_score"],
@@ -135,15 +175,18 @@ ax4.set_xscale("log")
 ax4.legend()
 
 plt.tight_layout()
+plt.savefig(f"{OUTPUT_DIR}/hub_score_visualization.png")
 print(f"Saved: {OUTPUT_DIR}/hub_score_visualization.png")
 
-print("\n" + "=" * 60)
+repos = df["repo"].unique()
+print(f"\n{'=' * 60}")
 print("SUMMARY STATISTICS")
 print("=" * 60)
+print(f"Repositories: {len(repos)}")
 print(f"Files analyzed: {len(df)}")
 print(f"  Active files: {len(active)}")
 print(f"  Deleted files: {len(deleted)}")
-print(f"Mean hub score: {df['hub_score'].mean():.2f}")
-print(f"Max hub score: {df['hub_score'].max():.2f}")
+print(f"Mean hub score: {df['hub_score'].mean():.6f}")
+print(f"Max hub score: {df['hub_score'].max():.6f}")
 print(f"Mean partner count: {df['partner_count'].mean():.1f}")
 print(f"Mean coupling: {df['avg_coupling'].mean():.4f}")

@@ -1,9 +1,9 @@
 use git2::{Delta, DiffFindOptions, DiffOptions, Repository};
 use log::info;
 use std::collections::HashMap;
-use std::path::Path;
 
-use crate::file_graph::{ChangedFile, FileGraph, FileGraphBuilder};
+use crate::file_graph::ChangedFile;
+use crate::storage::Neo4jClient;
 
 pub struct GitAnalyzer {
     repo_path: String,
@@ -20,17 +20,17 @@ impl GitAnalyzer {
         }
     }
 
-    pub fn analyze(&mut self) -> Result<FileGraph, String> {
+    pub async fn analyze(&mut self, client: &Neo4jClient, repo_name: &str) -> Result<i64, String> {
         let repo = Repository::open(&self.repo_path)
             .map_err(|e| format!("Failed to open repository: {}", e))?;
 
-        let repo_name = Path::new(&self.repo_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-
         info!("Analyzing repository: {}", repo_name);
+
+        client
+            .save_repository(repo_name, None)
+            .await
+            .map_err(|e| format!("Failed to save repository: {}", e))?;
+
         let mut revwalk = repo
             .revwalk()
             .map_err(|err| format!("Error creating revwalk: {}", err))?;
@@ -41,19 +41,19 @@ impl GitAnalyzer {
         revwalk
             .set_sorting(git2::Sort::TIME | git2::Sort::REVERSE)
             .map_err(|err| format!("Sorting failed {}", err))?;
-        let mut builder = FileGraphBuilder::new(repo_name);
 
-        let mut commit_count = 0;
+        let mut commit_count = 0i64;
 
         for rev in revwalk {
             let current_commit = rev.map_err(|err| format!("Error unwrapping revwalk:{}", err))?;
             let commit = repo
                 .find_commit(current_commit)
                 .map_err(|e| format!("Failed to find commit: {}", e))?;
+            let commit_id = commit.id().to_string();
             let changed_files = self.get_changed_files(&repo, &commit)?;
             if !changed_files.is_empty() {
-                let commit_hash = commit.id().to_string();
-                builder.add_commit(&changed_files, Some(&commit_hash));
+                self.save_to_neo4j(client, repo_name, &changed_files, Some(&commit_id))
+                    .await?;
             }
 
             commit_count += 1;
@@ -62,12 +62,59 @@ impl GitAnalyzer {
             }
         }
 
+        client
+            .update_commit_count(repo_name, commit_count)
+            .await
+            .map_err(|e| format!("Failed to update commit count: {}", e))?;
+
+        client
+            .link_all_files_to_repo(repo_name)
+            .await
+            .map_err(|e| format!("Failed to link files to repo: {}", e))?;
+
         info!("Total commits analyzed: {}", commit_count);
 
-        let mut graph = builder.finalize();
-        graph.total_commits_analyzed = commit_count;
+        Ok(commit_count)
+    }
 
-        Ok(graph)
+    async fn save_to_neo4j(
+        &mut self,
+        client: &Neo4jClient,
+        repo_name: &str,
+        changed_files: &[ChangedFile],
+        commit_id: Option<&str>,
+    ) -> Result<(), String> {
+        let mut unique_files: Vec<&str> = changed_files.iter().map(|f| f.path.as_str()).collect();
+        unique_files.sort();
+        unique_files.dedup();
+
+        for file in changed_files {
+            let deleted_at_commit = if file.is_deleted { commit_id } else { None };
+            client
+                .save_file_node(
+                    repo_name,
+                    &file.path,
+                    file.additions as i64,
+                    file.deletions as i64,
+                    deleted_at_commit,
+                )
+                .await
+                .map_err(|e| format!("Failed to save file node: {}", e))?;
+        }
+
+        for i in 0..unique_files.len() {
+            for j in (i + 1)..unique_files.len() {
+                let source = unique_files[i];
+                let target = unique_files[j];
+
+                client
+                    .save_cochange_relationship(repo_name, source, target)
+                    .await
+                    .map_err(|e| format!("Failed to save co-change relationship: {}", e))?;
+            }
+        }
+
+        Ok(())
     }
 
     fn get_changed_files(
