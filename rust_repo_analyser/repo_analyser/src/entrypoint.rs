@@ -55,7 +55,7 @@ pub async fn analyse_github_repos(
 
             let repo_name = extract_repo_name(repo_url).unwrap_or_else(|| "unknown".to_string());
 
-            let mut analyser = GitAnalyzer::new(path.display().to_string());
+            let mut analyser = GitAnalyzer::new(path.display().to_string(), repo_url.to_string());
 
             match analyser.analyze(&client, &repo_name).await {
                 Ok(commit_count) => {
@@ -82,7 +82,7 @@ pub async fn analyze_local_repo(
     let client = Neo4jClient::new(&neo4j_uri).await?;
     client.init_schema().await?;
 
-    let mut analyser = GitAnalyzer::new(repo_path);
+    let mut analyser = GitAnalyzer::new(repo_path, "null".to_string());
     let commit_count = analyser.analyze(&client, &repo_name).await?;
 
     println!(
@@ -99,4 +99,94 @@ pub async fn analyze_local_repo(
     println!("Computed hub scores for {}", repo_name);
 
     Ok(commit_count)
+}
+
+pub async fn copy_top_files(
+    neo4j_uri: String,
+    limit: i64,
+    output_dir: String,
+    clone_path: String,
+    extension: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = Neo4jClient::new(&neo4j_uri).await?;
+
+    let repos_with_files = client
+        .get_top_files_grouped(limit, &extension)
+        .await?;
+
+    let output_path = Path::new(&output_dir);
+    fs::create_dir_all(output_path)?;
+
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        Cred::ssh_key(
+            username_from_url.unwrap(),
+            None,
+            std::path::Path::new(&format!("{}/.ssh/id_ed25519", env::var("HOME").unwrap())),
+            None,
+        )
+    });
+
+    let mut fo = git2::FetchOptions::new();
+    fo.remote_callbacks(callbacks);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fo);
+
+    let clone_base = Path::new(&clone_path);
+
+    for repo_data in repos_with_files {
+        let repo_name = &repo_data.repo;
+        let repo_url = &repo_data.repo_url;
+
+        if repo_url.is_empty() {
+            println!("Skipping {} - no repo URL", repo_name);
+            continue;
+        }
+
+        if repo_data.files.is_empty() {
+            println!("Skipping {} - no files", repo_name);
+            continue;
+        }
+
+        println!("Processing {} - {} files", repo_name, repo_data.files.len());
+
+        let repo_clone_path = clone_base.join(repo_name);
+
+        if repo_clone_path.exists() {
+            fs::remove_dir_all(&repo_clone_path)?;
+        }
+
+        builder
+            .clone(repo_url, &repo_clone_path)
+            .map_err(|e| format!("Failed to clone {}: {}", repo_url, e))?;
+
+        for file in &repo_data.files {
+            let source_file = repo_clone_path.join(&file.path);
+            if !source_file.exists() {
+                println!("  File not found: {}", file.path);
+                continue;
+            }
+
+            let filename = Path::new(&file.path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| file.path.clone());
+
+            let dest_filename = format!("{}__{}", repo_name, filename);
+            let dest_file = output_path.join(&dest_filename);
+
+            fs::copy(&source_file, &dest_file)
+                .map_err(|e| format!("Failed to copy {}: {}", file.path, e))?;
+
+            println!("  Copied: {}", dest_filename);
+        }
+
+        fs::remove_dir_all(&repo_clone_path).ok();
+        println!("Cleaned up clone for {}", repo_name);
+    }
+
+    println!("Done! Files saved to {}", output_dir);
+
+    Ok(())
 }

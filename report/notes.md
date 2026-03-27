@@ -121,3 +121,14 @@ Fixes
 - Connecting sentences -> 
 - Static analysis -> Why are we going for static analysis justify why we want to do this. Talk about training and why we're not doing other approaches
 
+
+
+# Feedback 2
+- 8.1 -> JOSS cite is the github homepage (Cite their webpage)
+- TODO NOTES -> Convert into a formatted note ( Typst approach flag for TODO )
+- Do the introduction give some context motivation and framing develop it out -> Bulletpoint skeleton for today
+- End of 6 -> Need a cleaner bridge -> Need to highlight the fact that expert rules -> Dont dimiss their approach, given a solid dataset their is precedent for advantages over expert rules 
+- Machine learning - Good 
+- Develop a coherent argument throughout the paper -> Need a bit of a flow now.
+- Hub score needs a justification from both literature and comparison to real world analysis
+

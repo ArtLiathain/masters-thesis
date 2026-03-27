@@ -7,14 +7,16 @@ use crate::storage::Neo4jClient;
 
 pub struct GitAnalyzer {
     repo_path: String,
+    repo_url: String,
     rename_map: HashMap<String, String>,
     current_names: HashMap<String, String>,
 }
 
 impl GitAnalyzer {
-    pub fn new(repo_path: String) -> Self {
+    pub fn new(repo_path: String, repo_url: String) -> Self {
         Self {
             repo_path,
+            repo_url,
             rename_map: HashMap::new(),
             current_names: HashMap::new(),
         }
@@ -27,7 +29,7 @@ impl GitAnalyzer {
         info!("Analyzing repository: {}", repo_name);
 
         client
-            .save_repository(repo_name, None)
+            .save_repository(repo_name, Some(&self.repo_url))
             .await
             .map_err(|e| format!("Failed to save repository: {}", e))?;
 

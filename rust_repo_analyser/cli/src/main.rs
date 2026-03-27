@@ -18,6 +18,7 @@ enum Commands {
     Graph(GraphArgs),
     Clone(CloneArgs),
     Verify(VerifyArgs),
+    Copy(CopyTopFilesArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -77,6 +78,22 @@ struct VerifyArgs {
 
     #[arg(short, long, default_value = "graph_output.json")]
     output: String,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Copy top files by hub score from Neo4j repos to local folder", long_about = None)]
+struct CopyTopFilesArgs {
+    #[arg(short, long, default_value = "200")]
+    limit: i64,
+
+    #[arg(short, long, default_value = "data/files")]
+    output: String,
+
+    #[arg(short, long, default_value = "/tmp/clone")]
+    clone_path: String,
+
+    #[arg(short, long, default_value = "cpp")]
+    extension: String,
 }
 
 #[tokio::main]
@@ -143,6 +160,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 graph.files.len(),
                 graph.edges.len()
             );
+        }
+        Commands::Copy(args) => {
+            println!("Copying top {} files by hub score", args.limit);
+            println!("Output: {}", args.output);
+            println!("Clone path: {}", args.clone_path);
+            println!("Extension: {}", args.extension);
+            println!("Neo4j URI: {}", cli.neo4j_uri);
+
+            repo_analyser::entrypoint::copy_top_files(
+                cli.neo4j_uri,
+                args.limit,
+                args.output,
+                args.clone_path,
+                args.extension,
+            )
+            .await?;
+            println!("Successfully copied all files");
         }
     }
 

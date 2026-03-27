@@ -45,6 +45,12 @@
 
 
 = Introduction
+Core argument
+- Research software is bad quality on average
+- Static analysers is a step to improving quality but the current implementation is usually ignored due to fixes being suggestions
+- Machine learning in this space is limited due to the volume of labelled data needed to create a model but there is precedent that it can improve performance over expert opinion
+- An automatic approach to dataset creation using a volume based approach quickly identifying high risk files is the solution
+- This solution is also tailored to pertain to research software particualrly to allow for the ml to learn the specific patterns there
 
 
 === Research question

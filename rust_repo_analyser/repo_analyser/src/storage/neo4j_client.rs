@@ -26,6 +26,19 @@ pub struct GraphData {
     pub edges: Vec<Edge>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoFile {
+    pub path: String,
+    pub hub_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoWithFiles {
+    pub repo: String,
+    pub repo_url: String,
+    pub files: Vec<RepoFile>,
+}
+
 pub struct Neo4jClient {
     graph: Arc<Mutex<Graph>>,
 }
@@ -385,5 +398,60 @@ impl Neo4jClient {
             .map_err(|e| format!("Failed to link all files: {}", e))?;
 
         Ok(())
+    }
+
+    pub async fn get_top_files_grouped(
+        &self,
+        limit: i64,
+        extension: &str,
+    ) -> Result<Vec<RepoWithFiles>, String> {
+        let graph = self.graph.lock().await;
+
+        let pattern = format!(".{}", extension);
+        let q = query(
+            "MATCH (f:File) \
+             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+             WITH f ORDER BY f.hub_score DESC LIMIT $limit \
+             MATCH (r:Repository {name: f.repo}) \
+             RETURN f.repo AS repo, r.url AS repo_url, collect({path: f.path, hub_score: f.hub_score}) AS files \
+             ORDER BY repo"
+        )
+        .param("limit", limit)
+        .param("ext", pattern);
+
+        let mut result = graph
+            .execute(q)
+            .await
+            .map_err(|e| format!("Failed to get top files: {}", e))?;
+
+        let mut repos_with_files = Vec::new();
+        while let Ok(Some(row)) = result.next().await {
+            let repo: String = row.get::<String>("repo").unwrap_or_default();
+            let repo_url: Option<String> = row.get::<String>("repo_url").ok();
+            let files_data: Vec<serde_json::Value> = row
+                .get::<Vec<serde_json::Value>>("files")
+                .unwrap_or_default();
+
+            let files: Vec<RepoFile> = files_data
+                .into_iter()
+                .map(|v| {
+                    let path = v
+                        .get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let hub_score = v.get("hub_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                    RepoFile { path, hub_score }
+                })
+                .collect();
+
+            repos_with_files.push(RepoWithFiles {
+                repo,
+                repo_url: repo_url.unwrap_or_default(),
+                files,
+            });
+        }
+
+        Ok(repos_with_files)
     }
 }
