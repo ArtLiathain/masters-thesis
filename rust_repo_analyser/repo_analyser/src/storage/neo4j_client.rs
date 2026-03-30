@@ -145,6 +145,31 @@ impl Neo4jClient {
         Ok(())
     }
 
+    pub async fn rename_file_node(
+        &self,
+        repo: &str,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<(), String> {
+        let graph = self.graph.lock().await;
+
+        let q = query(
+            "MATCH (f:File {repo: $repo, path: $new_path}) DELETE f; \
+             MATCH (f:File {repo: $repo, path: $old_path}) \
+             SET f.path = $new_path"
+        )
+        .param("repo", repo)
+        .param("old_path", old_path)
+        .param("new_path", new_path);
+
+        graph
+            .run(q)
+            .await
+            .map_err(|e| format!("Failed to rename file node: {}", e))?;
+
+        Ok(())
+    }
+
     pub async fn save_cochange_relationship(
         &self,
         repo: &str,

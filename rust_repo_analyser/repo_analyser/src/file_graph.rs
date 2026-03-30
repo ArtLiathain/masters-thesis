@@ -13,6 +13,7 @@ pub struct ChangedFile {
     pub additions: u32,
     pub deletions: u32,
     pub is_deleted: bool,
+    pub renamed_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

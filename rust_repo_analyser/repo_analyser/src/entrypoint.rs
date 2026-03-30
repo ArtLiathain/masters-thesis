@@ -55,10 +55,11 @@ pub async fn analyse_github_repos(
 
             let repo_name = extract_repo_name(repo_url).unwrap_or_else(|| "unknown".to_string());
 
-            let mut analyser = GitAnalyzer::new(path.display().to_string(), repo_url.to_string());
+            let analyser = GitAnalyzer::new(path.display().to_string(), repo_url.to_string());
 
             match analyser.analyze(&client, &repo_name).await {
                 Ok(commit_count) => {
+                    client.compute_hub_scores(&repo_name).await?;
                     println!(
                         "Saved {} to Neo4j with {} commits analyzed",
                         repo_name, commit_count
@@ -82,7 +83,7 @@ pub async fn analyze_local_repo(
     let client = Neo4jClient::new(&neo4j_uri).await?;
     client.init_schema().await?;
 
-    let mut analyser = GitAnalyzer::new(repo_path, "null".to_string());
+    let analyser = GitAnalyzer::new(repo_path, "null".to_string());
     let commit_count = analyser.analyze(&client, &repo_name).await?;
 
     println!(
@@ -110,9 +111,8 @@ pub async fn copy_top_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Neo4jClient::new(&neo4j_uri).await?;
 
-    let repos_with_files = client
-        .get_top_files_grouped(limit, &extension)
-        .await?;
+    let repos_with_files = client.get_top_files_grouped(limit, &extension).await?;
+    println!("{:?}", repos_with_files);
 
     let output_path = Path::new(&output_dir);
     fs::create_dir_all(output_path)?;

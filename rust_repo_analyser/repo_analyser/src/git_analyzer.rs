@@ -1,6 +1,6 @@
-use git2::{Delta, DiffFindOptions, DiffOptions, Repository};
+use git2::{Delta, DiffFindOptions, Repository};
 use log::info;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::file_graph::ChangedFile;
 use crate::storage::Neo4jClient;
@@ -8,8 +8,6 @@ use crate::storage::Neo4jClient;
 pub struct GitAnalyzer {
     repo_path: String,
     repo_url: String,
-    rename_map: HashMap<String, String>,
-    current_names: HashMap<String, String>,
 }
 
 impl GitAnalyzer {
@@ -17,12 +15,10 @@ impl GitAnalyzer {
         Self {
             repo_path,
             repo_url,
-            rename_map: HashMap::new(),
-            current_names: HashMap::new(),
         }
     }
 
-    pub async fn analyze(&mut self, client: &Neo4jClient, repo_name: &str) -> Result<i64, String> {
+    pub async fn analyze(&self, client: &Neo4jClient, repo_name: &str) -> Result<i64, String> {
         let repo = Repository::open(&self.repo_path)
             .map_err(|e| format!("Failed to open repository: {}", e))?;
 
@@ -51,10 +47,9 @@ impl GitAnalyzer {
             let commit = repo
                 .find_commit(current_commit)
                 .map_err(|e| format!("Failed to find commit: {}", e))?;
-            let commit_id = commit.id().to_string();
-            let changed_files = self.get_changed_files(&repo, &commit)?;
-            if !changed_files.is_empty() {
-                self.save_to_neo4j(client, repo_name, &changed_files, Some(&commit_id))
+            let (changed_files, renames) = self.get_changed_files(&repo, &commit)?;
+            if !changed_files.is_empty() || !renames.is_empty() {
+                self.save_to_neo4j(client, repo_name, &changed_files, &renames)
                     .await?;
             }
 
@@ -80,25 +75,41 @@ impl GitAnalyzer {
     }
 
     async fn save_to_neo4j(
-        &mut self,
+        &self,
         client: &Neo4jClient,
         repo_name: &str,
         changed_files: &[ChangedFile],
-        commit_id: Option<&str>,
+        renames: &[(String, String)],
     ) -> Result<(), String> {
+        for (old_path, new_path) in renames {
+            match client
+                .rename_file_node(repo_name, old_path, new_path)
+                .await
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Failed to rename file node {} -> {}: {}",
+                        old_path,
+                        new_path,
+                        e
+                    );
+                }
+            }
+        }
+
         let mut unique_files: Vec<&str> = changed_files.iter().map(|f| f.path.as_str()).collect();
         unique_files.sort();
         unique_files.dedup();
 
         for file in changed_files {
-            let deleted_at_commit = if file.is_deleted { commit_id } else { None };
             client
                 .save_file_node(
                     repo_name,
                     &file.path,
                     file.additions as i64,
                     file.deletions as i64,
-                    deleted_at_commit,
+                    None,
                 )
                 .await
                 .map_err(|e| format!("Failed to save file node: {}", e))?;
@@ -120,10 +131,10 @@ impl GitAnalyzer {
     }
 
     fn get_changed_files(
-        &mut self,
+        &self,
         repo: &Repository,
         commit: &git2::Commit,
-    ) -> Result<Vec<ChangedFile>, String> {
+    ) -> Result<(Vec<ChangedFile>, Vec<(String, String)>), String> {
         let tree = commit
             .tree()
             .map_err(|e| format!("Failed to get commit tree: {}", e))?;
@@ -135,52 +146,53 @@ impl GitAnalyzer {
             Some(
                 parent
                     .tree()
-                    .map_err(|e| format!("Failed to get parent tree: {}", e))?,
+                    .map_err(|e| format!("Failed to get commit tree: {}", e))?,
             )
         } else {
             None
         };
 
-        let mut diff_opts = DiffOptions::new();
-        diff_opts
-            .include_untracked(true)
-            .recurse_untracked_dirs(true);
-
         let mut diff = repo
-            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
             .map_err(|e| format!("Failed to get diff: {}", e))?;
 
-        let mut find_opts = DiffFindOptions::new();
-        find_opts.renames(true);
-        diff.find_similar(Some(&mut find_opts))
+        diff.find_similar(Some(&mut DiffFindOptions::new().renames(true)))
             .map_err(|e| format!("Failed to find similar: {}", e))?;
 
-        let mut commit_path_to_canonical: HashMap<String, String> = HashMap::new();
-        let mut new_renames = Vec::new();
-        let mut commit_paths = Vec::new();
-        let mut deleted_paths = Vec::new();
+        let mut renames: Vec<(String, String)> = Vec::new();
+        let mut deleted_paths: HashSet<String> = HashSet::new();
+        let mut all_paths: Vec<String> = Vec::new();
 
         diff.foreach(
             &mut |delta, _| {
-                if delta.status() == Delta::Deleted {
-                    if let Some(path) = delta.old_file().path() {
-                        deleted_paths.push(path.to_string_lossy().to_string());
+                match delta.status() {
+                    Delta::Deleted => {
+                        if let Some(path) = delta.old_file().path() {
+                            deleted_paths.insert(path.to_string_lossy().to_string());
+                        }
                     }
+                    Delta::Renamed => {
+                        if let Some(old_path) = delta.old_file().path() {
+                            let old_path_str = old_path.to_string_lossy().to_string();
+                            deleted_paths.remove(&old_path_str);
+                        }
+                        if let (Some(old_path), Some(new_path)) =
+                            (delta.old_file().path(), delta.new_file().path())
+                        {
+                            renames.push((
+                                old_path.to_string_lossy().to_string(),
+                                new_path.to_string_lossy().to_string(),
+                            ));
+                        }
+                    }
+                    _ => {}
                 }
                 true
             },
             None,
             Some(&mut |delta, _| {
                 if let Some(path) = delta.new_file().path() {
-                    let path_str = path.to_string_lossy().to_string();
-                    commit_paths.push(path_str.clone());
-
-                    if delta.status() == Delta::Renamed {
-                        if let Some(old_path) = delta.old_file().path() {
-                            let old_path_str = old_path.to_string_lossy().to_string();
-                            new_renames.push((old_path_str, path_str));
-                        }
-                    }
+                    all_paths.push(path.to_string_lossy().to_string());
                 }
                 true
             }),
@@ -188,31 +200,8 @@ impl GitAnalyzer {
         )
         .map_err(|e| format!("Failed to iterate diff: {}", e))?;
 
-        for (old_path, new_path) in new_renames {
-            self.rename_map.insert(old_path.clone(), new_path.clone());
-            self.current_names.insert(old_path, new_path.clone());
-            self.current_names
-                .insert(new_path.clone(), new_path.clone());
-            commit_path_to_canonical.insert(new_path.clone(), new_path);
-        }
-
-        for path_str in &commit_paths {
-            if commit_path_to_canonical.contains_key(path_str) {
-                continue;
-            }
-            let canonical = self
-                .current_names
-                .get(path_str)
-                .cloned()
-                .unwrap_or_else(|| path_str.clone());
-            commit_path_to_canonical.insert(path_str.clone(), canonical);
-        }
-
-        let mut file_stats: HashMap<String, (u32, u32, bool)> = HashMap::new();
-
-        for deleted in &deleted_paths {
-            file_stats.entry(deleted.clone()).or_insert((0, 0, true));
-        }
+        let mut file_stats: std::collections::HashMap<String, (u32, u32)> =
+            std::collections::HashMap::new();
 
         diff.foreach(
             &mut |_, _| true,
@@ -221,7 +210,7 @@ impl GitAnalyzer {
             Some(&mut |delta, _hunk, line| {
                 if let Some(path) = delta.new_file().path() {
                     let path_str = path.to_string_lossy().to_string();
-                    let stats = file_stats.entry(path_str).or_insert((0, 0, false));
+                    let stats = file_stats.entry(path_str).or_insert((0, 0));
                     if line.origin() == '+' {
                         stats.0 += 1;
                     } else if line.origin() == '-' {
@@ -233,24 +222,23 @@ impl GitAnalyzer {
         )
         .map_err(|e| format!("Failed to count lines: {}", e))?;
 
-        let result: Vec<ChangedFile> = commit_path_to_canonical
+        let result: Vec<ChangedFile> = all_paths
             .into_iter()
-            .map(|(commit_path, canonical_path)| {
-                let (additions, deletions, is_deleted) =
-                    file_stats.remove(&commit_path).unwrap_or((0, 0, false));
-                ChangedFile {
-                    path: canonical_path,
+            .filter_map(|path| {
+                if deleted_paths.contains(&path) {
+                    return None;
+                }
+                let (additions, deletions) = file_stats.remove(&path).unwrap_or((0, 0));
+                Some(ChangedFile {
+                    path,
                     additions,
                     deletions,
-                    is_deleted,
-                }
+                    is_deleted: false,
+                    renamed_to: None,
+                })
             })
             .collect();
 
-        Ok(result)
-    }
-
-    pub fn get_rename_map(&self) -> &HashMap<String, String> {
-        &self.rename_map
+        Ok((result, renames))
     }
 }
