@@ -118,7 +118,6 @@ PCA
 
 Fixes
 - Check wilson 2006 and 2016 sources
-- Connecting sentences -> 
 - Static analysis -> Why are we going for static analysis justify why we want to do this. Talk about training and why we're not doing other approaches
 
 
