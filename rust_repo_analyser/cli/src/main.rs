@@ -19,6 +19,7 @@ enum Commands {
     Clone(CloneArgs),
     Verify(VerifyArgs),
     Copy(CopyTopFilesArgs),
+    Metrics(MetricsArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -94,6 +95,19 @@ struct CopyTopFilesArgs {
 
     #[arg(short, long, default_value = "cpp")]
     extension: String,
+}
+
+#[derive(Parser, Debug)]
+#[command(about = "Analyze file metrics from a folder", long_about = None)]
+struct MetricsArgs {
+    #[arg(short, long)]
+    folder: String,
+
+    #[arg(short, long, default_value = "../results/metrics.csv")]
+    output: String,
+
+    #[arg(short, long, default_value = "false")]
+    is_high_risk: bool,
 }
 
 #[tokio::main]
@@ -177,6 +191,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
             println!("Successfully copied all files");
+        }
+        Commands::Metrics(args) => {
+            println!("Analyzing file metrics from: {}", args.folder);
+            repo_analyser::file_metrics_analyser::convert_files_to_metric_csv(
+                args.folder,
+                args.output,
+                args.is_high_risk,
+            )?;
+            println!("Successfully analyzed file metrics");
         }
     }
 

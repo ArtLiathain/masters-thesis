@@ -306,11 +306,14 @@
 	pages = {66--69},
 }
 
-@article{howison_sustainability_nodate,
+@article{howison_sustainability_2014,
 	title = {The sustainability of scientific software:},
+	doi = {https://james.howison.name/pubs/HowisonHerbsleb-Sustainability.pdf},
 	abstract = {The sustainability of scientific software is a key challenge for science policy. We approach this question by drawing on empirical studies of scientists using software and describe how components are arranged with complements and dependencies into value-­providing assemblies, periodically revisited by their scientist users. Over time, software declines in scientific usefulness, driven by four factors: a moving scientific frontier and technological change, production friction, use friction and the software ecosystem context. In particular we highlight the impact of the complexity of ecosystem context, in terms of the diversity of use-­‐contexts in which a component is used. We identify three broad strategies to address the need for work to sustain the usefulness of scientific software: suppress the drivers, reduce the amount of work needed, or attract sufficient resources able to undertake the work needed to sustain scientific usefulness. We examine three attraction systems: commercial markets, community-­‐based peer-­‐production and grant-­‐making. We describe how these systems bring resources to projects, and particularly highlight how both commercial markets and peer production address the challenges of ecosystem complexity while scientific grant-­‐making does not. We conclude by making science policy recommendations to address the challenges of sustainability, by enhancing the grant-­making system and by facilitating transitions to other resource attraction systems.},
 	language = {en},
+	journal = {2014},
 	author = {Howison, James and Herbsleb, James D},
+	year = {2014},
 }
 
 @inproceedings{johnson_lint_1978,
@@ -321,16 +324,6 @@
 	author = {Johnson, S. and Hill, Murray},
 	year = {1978},
 	annote = {[TLDR] This document discusses the use of lint, gives an overview of the implementa- tion, and gives some hints on the writing of machine independent C code.},
-}
-
-@inproceedings{noauthor_pdf_nodate,
-	title = {({PDF}) {A} probabilistic software quality model},
-	url = {https://www.researchgate.net/publication/262360845_A_probabilistic_software_quality_model},
-	doi = {10.1109/ICSM.2011.6080791},
-	abstract = {PDF {\textbackslash}textbackslashtextbackslashtextbackslashtextbackslashtextbar In order to take the right decisions in estimating the costs and risks of a software change, it is crucial for the developers and managers to be... {\textbackslash}textbackslashtextbackslashtextbackslashtextbackslashtextbar Find, read and cite all the research you need on ResearchGate},
-	language = {en},
-	urldate = {2026-02-15},
-	booktitle = {{ResearchGate}},
 }
 
 @inproceedings{farago_cumulative_2015,
@@ -566,7 +559,7 @@
 	title = {Ghost {Echoes} {Revealed}: {Benchmarking} {Maintainability} {Metrics} and {Machine} {Learning} {Predictions} {Against} {Human} {Assessments}},
 	shorttitle = {Ghost {Echoes} {Revealed}},
 	url = {http://arxiv.org/abs/2408.10754},
-	doi = {10.48550/arXiv.2408.10754},
+	doi = {This was measured by preforming a pseudo longitudinal study on large open source codebases, using tools such as Understand and Titan to calculate commit coefficient between every file. A metric which relates to the chance of a commit on one file will require a commit on another. An example would be given files A, B and C, with a commit history of {A,B} and {A,C} the commit coefficients in relation to A are there is a 100% chance if B or C is modified A will be also, but if A is modified there is only a 50% chance that B or C will be modified. This would then be called a fileset, this would be extrapolated over the entire commit history and codebase creating many filesets. This would allow the tool to extract semantic relations between files that are not apparent structurally. The study was able to compound this effect by measuring the number of commits labeled as bug fixes against the number of feature commits, this allows simple data analytics to measure the amount of maintenance debt that each fileset would have.  Using this method, high maintenance filsets can be labelled and evaluated as a quantitative metric. This is a strong contender for a evaluation metric but there is a caveat, that is it is reliant on good commit messages and issue tracking which is not commonly seen in research code. Meaning that a new approach that is agnostic to the quality of the codebase is required to.    === Code churn's impact on maintainability  Code churn is the rate of change of lines of code in a file. A file with high churn might have an incredibly high number of additions and deletions while remaining small. This is an ATD hotspot when assessing points of interest in terms of maintainability in codebases. @farago_cumulative_2015 is paper which assess how code code churn affects the maintainability of codebases, by assessing the code churn of files in large codebases, achieving this by calculating the sum total of lines added and deleted on every file.  Supplementing this the maintainability of the code was measured using ColumbusQM probabilistic software quality model @noauthor_pdf_nodate. The paper was able to assess the levels of maintainability per file in proportion to the amount of code changes, drawing the conclusion that code that has high churn is code in which it is harder to maintain. This conclusion makes sense, it reaffirms that poorly architect ed code will need more changes which increases the maintainability burden of the code. The method in which the code churn was measured is quite useful and will be the approach taken for this study.  Unfortunately there is one key issue with this paper, the use of ColumbusQM for assessing the maintainability of the codebase.  ColumbusQM is a statistical machine which takes metrics such as lines of code, styling, coupling, number of incoming invocations etc.. Aggregates them which then computes a numerical output. The metrics such as styling are something so subjective and minor that the inclusion as one of the key metrics in the evaluation underscores the whole statistical model. Taking into account all of the evaluation metrics this is a case of blind assessment where structural relations or evolutionary dependencies are not measured and only a snapshot of the codebase is measured. Compounding on this the evaluation metric for the output of the statistical model was based on developer feedback and ideas, which is unreliable and subjective.   Taking these points into account, the key takeaway from @farago_cumulative_2015 is the work on code churn particularly the methodology but the conclusions in regards to maintainability will only be used as an idea within this study.},
 	abstract = {As generative AI is expected to increase global code volumes, the importance of maintainability from a human perspective will become even greater. Various methods have been developed to identify the most important maintainability issues, including aggregated metrics and advanced Machine Learning (ML) models. This study benchmarks several maintainability prediction approaches, including State-of-the-Art (SotA) ML, SonarQube's Maintainability Rating, CodeScene's Code Health, and Microsoft's Maintainability Index. Our results indicate that CodeScene matches the accuracy of SotA ML and outperforms the average human expert. Importantly, unlike SotA ML, CodeScene also provides end users with actionable code smell details to remedy identified issues. Finally, caution is advised with SonarQube due to its tendency to generate many false positives. Unfortunately, our findings call into question the validity of previous studies that solely relied on SonarQube output for establishing ground truth labels. To improve reliability in future maintainability and technical debt studies, we recommend employing more accurate metrics. Moreover, reevaluating previous findings with Code Health would mitigate this revealed validity threat.},
 	urldate = {2026-03-16},
 	publisher = {arXiv},
@@ -593,15 +586,6 @@
 	keywords = {Software systems, Software reliability, Java, Complexity theory, Software Maintenance, Software, Machine Learning, Software Measurement, Software quality, Software Quality, Tools},
 	pages = {278--289},
 	annote = {ISSN: 2576-3148},
-}
-
-@misc{noauthor_pdf_nodate-1,
-	title = {({PDF}) {\textbackslash}textbackslash\{{PROMISE}{\textbackslash}textbackslash\} {Repository} of empirical software engineering data},
-	url = {https://www.researchgate.net/publication/242638724_PROMISE_Repository_of_empirical_software_engineering_data},
-	abstract = {PDF {\textbackslash}textbar On Jan 1, 2007, G Boetticher and others published {\textbackslash}textbackslash\{PROMISE{\textbackslash}textbackslash\} Repository of empirical software engineering data {\textbackslash}textbar Find, read and cite all the research you need on ResearchGate},
-	language = {en},
-	urldate = {2026-03-16},
-	note = {Publication Title: ResearchGate},
 }
 
 @article{bertrand_replication_2023,
@@ -632,12 +616,6 @@
 	pages = {243--248},
 }
 
-@misc{noauthor_openjournalsjoss-reviews_nodate,
-	title = {openjournals/joss-reviews: {Reviews} for the {Journal} of {Open} {Source} {Software}},
-	url = {https://github.com/openjournals/joss-reviews},
-	urldate = {2026-03-17},
-}
-
 @misc{noauthor_build_nodate,
 	title = {Build software better, together},
 	url = {https://github.com},
@@ -645,4 +623,32 @@
 	language = {en},
 	urldate = {2026-03-17},
 	note = {Publication Title: GitHub},
+}
+
+@inproceedings{bakota_probabilistic_2011,
+	title = {A probabilistic software quality model},
+	doi = {10.1109/ICSM.2011.6080791},
+	abstract = {In order to take the right decisions in estimating the costs and risks of a software change, it is crucial for the developers and managers to be aware of the quality attributes of their software. Maintainability is an important characteristic defined in the ISO/IEC 9126 standard, owing to its direct impact on development costs. Although the standard provides definitions for the quality characteristics, it does not define how they should be computed. Not being tangible notions, these characteristics are hardly expected to be representable by a single number. Existing quality models do not deal with ambiguity coming from subjective interpretations of characteristics, which depend on experience, knowledge, and even intuition of experts. This research aims at providing a probabilistic approach for computing high-level quality characteristics, which integrate expert knowledge, and deal with ambiguity at the same time. The presented method copes with "goodness" functions, which are continuous generalizations of threshold based approaches, i.e. instead of giving a number for the measure of goodness, it provides a continuous function. Two different systems were evaluated using this approach, and the results were compared to the opinions of experts involved in the development. The results show that the quality model values change in accordance with the maintenance activities, and they are in a good correlation with the experts' expectations.},
+	author = {Bakota, Tibor and Hegedüs, Péter and Kortvelyesi, Peter and Ferenc, Rudolf and Gyimothy, Tibor},
+	month = sep,
+	year = {2011},
+	pages = {243--252},
+	file = {Full Text PDF:C\:\\Users\\AOLiathain\\Zotero\\storage\\ZB5DDNLZ\\Bakota et al. - 2011 - A probabilistic software quality model.pdf:application/pdf},
+}
+
+@article{boetticher_promise_2007,
+	title = {{\textbackslash}\{{PROMISE}{\textbackslash}\} {Repository} of empirical software engineering data},
+	author = {Boetticher, Gary and Menzies, Tim and Ostrand, Thomas},
+	month = jan,
+	year = {2007},
+	file = {Full Text PDF:C\:\\Users\\AOLiathain\\Zotero\\storage\\6XMZCUMS\\Boetticher et al. - 2007 - PROMISE Repository of empirical software engineering data.pdf:application/pdf},
+}
+
+@misc{noauthor_journal_nodate,
+	title = {Journal of {Open} {Source} {Software}},
+	url = {https://joss.theoj.org},
+	abstract = {Journal of Open Source Software (JOSS) is a developer friendly, open access journal for research software packages.},
+	language = {en},
+	urldate = {2026-04-02},
+	file = {Snapshot:C\:\\Users\\AOLiathain\\Zotero\\storage\\ZZM4SA44\\joss.theoj.org.html:text/html},
 }
