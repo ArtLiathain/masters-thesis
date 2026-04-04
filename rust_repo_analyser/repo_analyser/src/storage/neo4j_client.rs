@@ -153,17 +153,43 @@ impl Neo4jClient {
     ) -> Result<(), String> {
         let graph = self.graph.lock().await;
 
-        let q = query(
-            "MATCH (f:File {repo: $repo, path: $new_path}) DELETE f; \
-             MATCH (f:File {repo: $repo, path: $old_path}) \
-             SET f.path = $new_path"
+        // Step 1: Delete any existing file node with the new_path (conflict resolution)
+        let delete_q = query(
+            "MATCH (f:File {repo: $repo, path: $new_path}) RETURN f.path as path"
+        )
+        .param("repo", repo)
+        .param("new_path", new_path);
+
+        let mut delete_result = graph
+            .execute(delete_q)
+            .await
+            .map_err(|e| format!("Failed to check for conflicting new_path node: {}", e))?;
+
+        let conflicting_node_exists = delete_result.next().await.is_ok();
+
+        if conflicting_node_exists {
+            let actual_delete_q = query(
+                "MATCH (f:File {repo: $repo, path: $new_path}) DETACH DELETE f"
+            )
+            .param("repo", repo)
+            .param("new_path", new_path);
+
+            graph
+                .run(actual_delete_q)
+                .await
+                .map_err(|e| format!("Failed to delete conflicting new_path node: {}", e))?;
+        }
+
+        // Step 2: Update old_path to new_path
+        let update_q = query(
+            "MATCH (f:File {repo: $repo, path: $old_path}) SET f.path = $new_path"
         )
         .param("repo", repo)
         .param("old_path", old_path)
         .param("new_path", new_path);
 
         graph
-            .run(q)
+            .run(update_q)
             .await
             .map_err(|e| format!("Failed to rename file node: {}", e))?;
 

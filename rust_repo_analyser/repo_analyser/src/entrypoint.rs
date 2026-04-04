@@ -57,7 +57,19 @@ pub async fn analyse_github_repos(
 
             let analyser = GitAnalyzer::new(path.display().to_string(), repo_url.to_string());
 
-            match analyser.analyze(&client, &repo_name).await {
+            // Use sensible defaults for batch processing
+            let max_files_per_commit = 100;
+            let max_renames_per_commit = 50;
+
+            match analyser
+                .analyze(
+                    &client,
+                    &repo_name,
+                    max_files_per_commit,
+                    max_renames_per_commit,
+                )
+                .await
+            {
                 Ok(commit_count) => {
                     client.compute_hub_scores(&repo_name).await?;
                     println!(
@@ -79,12 +91,21 @@ pub async fn analyze_local_repo(
     neo4j_uri: String,
     prune: bool,
     threshold: i64,
+    max_files_per_commit: usize,
+    max_renames_per_commit: usize,
 ) -> Result<i64, Box<dyn std::error::Error>> {
     let client = Neo4jClient::new(&neo4j_uri).await?;
     client.init_schema().await?;
 
     let analyser = GitAnalyzer::new(repo_path, "null".to_string());
-    let commit_count = analyser.analyze(&client, &repo_name).await?;
+    let commit_count = analyser
+        .analyze(
+            &client,
+            &repo_name,
+            max_files_per_commit,
+            max_renames_per_commit,
+        )
+        .await?;
 
     println!(
         "Saved {} to Neo4j with {} commits analyzed",

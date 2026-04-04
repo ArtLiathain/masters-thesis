@@ -1,5 +1,5 @@
 use git2::{Delta, DiffFindOptions, Repository};
-use log::info;
+use log::{debug, info};
 use std::collections::HashSet;
 
 use crate::file_graph::ChangedFile;
@@ -18,7 +18,13 @@ impl GitAnalyzer {
         }
     }
 
-    pub async fn analyze(&self, client: &Neo4jClient, repo_name: &str) -> Result<i64, String> {
+    pub async fn analyze(
+        &self,
+        client: &Neo4jClient,
+        repo_name: &str,
+        max_files_per_commit: usize,
+        max_renames_per_commit: usize,
+    ) -> Result<i64, String> {
         let repo = Repository::open(&self.repo_path)
             .map_err(|e| format!("Failed to open repository: {}", e))?;
 
@@ -41,21 +47,65 @@ impl GitAnalyzer {
             .map_err(|err| format!("Sorting failed {}", err))?;
 
         let mut commit_count = 0i64;
+        let mut skipped_commits: Vec<String> = Vec::new();
 
         for rev in revwalk {
             let current_commit = rev.map_err(|err| format!("Error unwrapping revwalk:{}", err))?;
             let commit = repo
                 .find_commit(current_commit)
                 .map_err(|e| format!("Failed to find commit: {}", e))?;
+            debug!("Getting changed files");
             let (changed_files, renames) = self.get_changed_files(&repo, &commit)?;
-            if !changed_files.is_empty() || !renames.is_empty() {
+
+            let commit_hash = commit.id().to_string();
+
+            if changed_files.len() > max_files_per_commit {
+                debug!(
+                    "Large commit detected: {} ({} files)",
+                    commit_hash,
+                    changed_files.len()
+                );
+
+                // Still process renames if under threshold
+                if !renames.is_empty() && renames.len() <= max_renames_per_commit {
+                    debug!(
+                        "Processing {} renames for large commit {}",
+                        renames.len(),
+                        commit_hash
+                    );
+                    for (old_path, new_path) in &renames {
+                        match client.rename_file_node(repo_name, old_path, new_path).await {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::warn!(
+                                    "Failed to rename file node {} -> {}: {}",
+                                    old_path,
+                                    new_path,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+
+                skipped_commits.push(commit_hash.clone());
+                info!(
+                    "Skipped large commit {} ({} files, {} renames)",
+                    commit_hash,
+                    changed_files.len(),
+                    renames.len()
+                );
+            } else if !changed_files.is_empty() || !renames.is_empty() {
+                debug!("Save to Neo4j");
                 self.save_to_neo4j(client, repo_name, &changed_files, &renames)
                     .await?;
+                debug!("Saved to Neo4j");
             }
 
             commit_count += 1;
-            if commit_count % 100 == 0 {
+            if commit_count % 1 == 0 {
                 info!("Processed {} commits", commit_count);
+                info!("Processed {} commit", commit.id());
             }
         }
 
@@ -71,6 +121,13 @@ impl GitAnalyzer {
 
         info!("Total commits analyzed: {}", commit_count);
 
+        if !skipped_commits.is_empty() {
+            info!("Skipped {} large commits:", skipped_commits.len());
+            for hash in &skipped_commits {
+                info!("  - {}", hash);
+            }
+        }
+
         Ok(commit_count)
     }
 
@@ -81,11 +138,9 @@ impl GitAnalyzer {
         changed_files: &[ChangedFile],
         renames: &[(String, String)],
     ) -> Result<(), String> {
+        debug!("Renaming files Started");
         for (old_path, new_path) in renames {
-            match client
-                .rename_file_node(repo_name, old_path, new_path)
-                .await
-            {
+            match client.rename_file_node(repo_name, old_path, new_path).await {
                 Ok(_) => {}
                 Err(e) => {
                     log::warn!(
@@ -97,11 +152,13 @@ impl GitAnalyzer {
                 }
             }
         }
+        debug!("Renaming files Ended");
 
         let mut unique_files: Vec<&str> = changed_files.iter().map(|f| f.path.as_str()).collect();
         unique_files.sort();
         unique_files.dedup();
 
+        debug!("Saving file nodes");
         for file in changed_files {
             client
                 .save_file_node(
@@ -114,11 +171,16 @@ impl GitAnalyzer {
                 .await
                 .map_err(|e| format!("Failed to save file node: {}", e))?;
         }
+        debug!("file nodes saved");
+
+        debug!("Relationships saving");
 
         for i in 0..unique_files.len() {
             for j in (i + 1)..unique_files.len() {
                 let source = unique_files[i];
                 let target = unique_files[j];
+
+                debug!("Failed save at {}, {}", source, target);
 
                 client
                     .save_cochange_relationship(repo_name, source, target)
@@ -126,6 +188,7 @@ impl GitAnalyzer {
                     .map_err(|e| format!("Failed to save co-change relationship: {}", e))?;
             }
         }
+        debug!("Relationships saved");
 
         Ok(())
     }
@@ -173,8 +236,7 @@ impl GitAnalyzer {
                     }
                     Delta::Renamed => {
                         if let Some(old_path) = delta.old_file().path() {
-                            let old_path_str = old_path.to_string_lossy().to_string();
-                            deleted_paths.remove(&old_path_str);
+                            deleted_paths.remove(&old_path.to_string_lossy().to_string());
                         }
                         if let (Some(old_path), Some(new_path)) =
                             (delta.old_file().path(), delta.new_file().path())

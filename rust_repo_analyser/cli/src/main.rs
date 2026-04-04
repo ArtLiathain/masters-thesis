@@ -59,6 +59,12 @@ struct GraphArgs {
 
     #[arg(long, default_value = "10")]
     threshold: i64,
+
+    #[arg(long, default_value = "100")]
+    max_files_per_commit: usize,
+
+    #[arg(long, default_value = "50")]
+    max_renames_per_commit: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -135,6 +141,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Analyzing repository: {}", args.repo);
             println!("Neo4j URI: {}", cli.neo4j_uri);
             println!("Prune: {}, threshold: {}", args.prune, args.threshold);
+            println!(
+                "Max files per commit: {}, max renames per commit: {}",
+                args.max_files_per_commit, args.max_renames_per_commit
+            );
 
             repo_analyser::entrypoint::analyze_local_repo(
                 args.repo,
@@ -142,6 +152,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cli.neo4j_uri,
                 args.prune,
                 args.threshold,
+                args.max_files_per_commit,
+                args.max_renames_per_commit,
             )
             .await?;
             println!("Successfully saved graph to Neo4j");
