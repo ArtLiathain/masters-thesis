@@ -5,3 +5,4 @@
 **/lib64
 **/mazeLogs/**
 **/__pycache__/
+/repo_cache/

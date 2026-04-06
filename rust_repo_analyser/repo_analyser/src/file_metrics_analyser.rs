@@ -114,33 +114,62 @@ pub fn flatten_metrics(
     }
 }
 
-pub fn convert_files_to_metric_csv(
-    file_path: String,
+pub fn convert_balanced_metrics(
+    parent_folder: String,
     output_file: String,
-    is_high_risk: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let paths = fs::read_dir(file_path).unwrap();
+    let parent_path = PathBuf::from(&parent_folder);
     let mut wtr = Writer::from_writer(vec![]);
-    for path in paths {
-        let path = path?;
 
-        println!("PATH: {}", path.path().display());
-        let path_buf = PathBuf::from(path.path());
-        let file_as_bytes = fs::read(&path_buf)?;
-        let results = get_function_spaces(
-            &rust_code_analysis::LANG::Cpp,
-            file_as_bytes,
-            &path_buf,
-            None,
-        )
-        .unwrap();
+    let subdirs = vec![("high", true), ("low", false)];
 
-        let flattened_metrics = flatten_metrics(
-            &path.path().display().to_string().split("/").last().unwrap(),
-            &results.metrics,
-            is_high_risk,
-        );
-        wtr.serialize(flattened_metrics)?;
+    for (subdir_name, is_high_risk) in subdirs {
+        let subdir_path = parent_path.join(subdir_name);
+
+        if !subdir_path.exists() {
+            eprintln!(
+                "Warning: Subdirectory '{}' does not exist, skipping",
+                subdir_name
+            );
+            continue;
+        }
+
+        let paths = fs::read_dir(&subdir_path)?;
+
+        for path in paths {
+            let path = path?;
+            let path_buf = PathBuf::from(path.path());
+
+            if !path_buf.is_file() {
+                continue;
+            }
+
+            if path_buf.extension().map_or(true, |ext| ext != "cpp") {
+                continue;
+            }
+
+            println!("Processing: {}", path.path().display());
+            let file_as_bytes = fs::read(&path_buf)?;
+            let results = match get_function_spaces(
+                &rust_code_analysis::LANG::Cpp,
+                file_as_bytes,
+                &path_buf,
+                None,
+            ) {
+                Some(r) => r,
+                None => {
+                    eprintln!("Warning: Could not analyze file: {}", path_buf.display());
+                    continue;
+                }
+            };
+
+            let flattened_metrics = flatten_metrics(
+                &path.path().display().to_string().split("/").last().unwrap(),
+                &results.metrics,
+                is_high_risk,
+            );
+            wtr.serialize(flattened_metrics)?;
+        }
     }
 
     let data = String::from_utf8(wtr.into_inner()?)?;

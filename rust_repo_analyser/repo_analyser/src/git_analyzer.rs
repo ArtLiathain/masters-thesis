@@ -88,6 +88,33 @@ impl GitAnalyzer {
                     }
                 }
 
+                // Always process deleted files even in large commits
+                let deleted_files: Vec<&ChangedFile> = changed_files
+                    .iter()
+                    .filter(|f| f.is_deleted)
+                    .collect();
+                if !deleted_files.is_empty() {
+                    debug!(
+                        "Processing {} deleted files for large commit {}",
+                        deleted_files.len(),
+                        commit_hash
+                    );
+                    for file in deleted_files {
+                        if let Err(e) = client
+                            .save_file_node(
+                                repo_name,
+                                &file.path,
+                                file.additions as i64,
+                                file.deletions as i64,
+                                Some(&commit_hash),
+                            )
+                            .await
+                        {
+                            log::warn!("Failed to save deleted file node {}: {}", file.path, e);
+                        }
+                    }
+                }
+
                 skipped_commits.push(commit_hash.clone());
                 info!(
                     "Skipped large commit {} ({} files, {} renames)",
@@ -97,7 +124,7 @@ impl GitAnalyzer {
                 );
             } else if !changed_files.is_empty() || !renames.is_empty() {
                 debug!("Save to Neo4j");
-                self.save_to_neo4j(client, repo_name, &changed_files, &renames)
+                self.save_to_neo4j(client, repo_name, &changed_files, &renames, Some(&commit_hash))
                     .await?;
                 debug!("Saved to Neo4j");
             }
@@ -137,6 +164,7 @@ impl GitAnalyzer {
         repo_name: &str,
         changed_files: &[ChangedFile],
         renames: &[(String, String)],
+        commit_hash: Option<&str>,
     ) -> Result<(), String> {
         debug!("Renaming files Started");
         for (old_path, new_path) in renames {
@@ -160,13 +188,18 @@ impl GitAnalyzer {
 
         debug!("Saving file nodes");
         for file in changed_files {
+            let deleted_at_commit = if file.is_deleted {
+                commit_hash
+            } else {
+                None
+            };
             client
                 .save_file_node(
                     repo_name,
                     &file.path,
                     file.additions as i64,
                     file.deletions as i64,
-                    None,
+                    deleted_at_commit,
                 )
                 .await
                 .map_err(|e| format!("Failed to save file node: {}", e))?;
@@ -284,12 +317,9 @@ impl GitAnalyzer {
         )
         .map_err(|e| format!("Failed to count lines: {}", e))?;
 
-        let result: Vec<ChangedFile> = all_paths
+        let mut result: Vec<ChangedFile> = all_paths
             .into_iter()
             .filter_map(|path| {
-                if deleted_paths.contains(&path) {
-                    return None;
-                }
                 let (additions, deletions) = file_stats.remove(&path).unwrap_or((0, 0));
                 Some(ChangedFile {
                     path,
@@ -300,6 +330,16 @@ impl GitAnalyzer {
                 })
             })
             .collect();
+
+        for path in deleted_paths {
+            result.push(ChangedFile {
+                path,
+                additions: 0,
+                deletions: 0,
+                is_deleted: true,
+                renamed_to: None,
+            });
+        }
 
         Ok((result, renames))
     }

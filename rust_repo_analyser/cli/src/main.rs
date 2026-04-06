@@ -73,7 +73,7 @@ struct CloneArgs {
     #[arg(short, long)]
     input: String,
 
-    #[arg(short, long, default_value = "/tmp/repos")]
+    #[arg(long, default_value = "./repo_cache", hide = true)]
     path: String,
 }
 
@@ -88,16 +88,16 @@ struct VerifyArgs {
 }
 
 #[derive(Parser, Debug)]
-#[command(about = "Copy top files by hub score from Neo4j repos to local folder", long_about = None)]
+#[command(about = "Copy files from Neo4j repos to local folder", long_about = None)]
 struct CopyTopFilesArgs {
+    #[arg(short, long)]
+    risk: String,
+
     #[arg(short, long, default_value = "200")]
     limit: i64,
 
     #[arg(short, long, default_value = "data/files")]
     output: String,
-
-    #[arg(short, long, default_value = "/tmp/clone")]
-    clone_path: String,
 
     #[arg(short, long, default_value = "cpp")]
     extension: String,
@@ -111,9 +111,6 @@ struct MetricsArgs {
 
     #[arg(short, long, default_value = "../results/metrics.csv")]
     output: String,
-
-    #[arg(short, long, default_value = "false")]
-    is_high_risk: bool,
 }
 
 #[tokio::main]
@@ -188,28 +185,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         Commands::Copy(args) => {
-            println!("Copying top {} files by hub score", args.limit);
+            println!("Copying {} files (risk: {})", args.limit, args.risk);
             println!("Output: {}", args.output);
-            println!("Clone path: {}", args.clone_path);
             println!("Extension: {}", args.extension);
             println!("Neo4j URI: {}", cli.neo4j_uri);
 
-            repo_analyser::entrypoint::copy_top_files(
-                cli.neo4j_uri,
-                args.limit,
-                args.output,
-                args.clone_path,
-                args.extension,
-            )
-            .await?;
+            match args.risk.as_str() {
+                "high" => {
+                    repo_analyser::entrypoint::copy_top_files(
+                        cli.neo4j_uri,
+                        args.limit,
+                        args.output,
+                        args.extension,
+                    )
+                    .await?;
+                }
+                "low" => {
+                    repo_analyser::entrypoint::copy_low_risk_files(
+                        cli.neo4j_uri,
+                        args.limit,
+                        args.output,
+                        args.extension,
+                    )
+                    .await?;
+                }
+                _ => {
+                    return Err("Risk must be 'high' or 'low'".into());
+                }
+            }
             println!("Successfully copied all files");
         }
         Commands::Metrics(args) => {
             println!("Analyzing file metrics from: {}", args.folder);
-            repo_analyser::file_metrics_analyser::convert_files_to_metric_csv(
+            repo_analyser::file_metrics_analyser::convert_balanced_metrics(
                 args.folder,
                 args.output,
-                args.is_high_risk,
             )?;
             println!("Successfully analyzed file metrics");
         }

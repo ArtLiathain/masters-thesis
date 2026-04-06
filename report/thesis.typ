@@ -229,7 +229,12 @@ This separation ensures that the model is learning to predict future maintenance
 The final balanced dataset consists of 4,000 observations. This 50/50 class distribution prevents the classifier from developing a majority-class bias, ensuring that the resulting decision rules are equally sensitive to the characteristics of "Hub" files.
 
 
+== Feature Engineering
+
+
 == Model Implementation and Training
+
+
 
 == Rule Derivation Process
 

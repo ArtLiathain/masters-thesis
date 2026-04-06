@@ -154,11 +154,9 @@ impl Neo4jClient {
         let graph = self.graph.lock().await;
 
         // Step 1: Delete any existing file node with the new_path (conflict resolution)
-        let delete_q = query(
-            "MATCH (f:File {repo: $repo, path: $new_path}) RETURN f.path as path"
-        )
-        .param("repo", repo)
-        .param("new_path", new_path);
+        let delete_q = query("MATCH (f:File {repo: $repo, path: $new_path}) RETURN f.path as path")
+            .param("repo", repo)
+            .param("new_path", new_path);
 
         let mut delete_result = graph
             .execute(delete_q)
@@ -168,11 +166,10 @@ impl Neo4jClient {
         let conflicting_node_exists = delete_result.next().await.is_ok();
 
         if conflicting_node_exists {
-            let actual_delete_q = query(
-                "MATCH (f:File {repo: $repo, path: $new_path}) DETACH DELETE f"
-            )
-            .param("repo", repo)
-            .param("new_path", new_path);
+            let actual_delete_q =
+                query("MATCH (f:File {repo: $repo, path: $new_path}) DETACH DELETE f")
+                    .param("repo", repo)
+                    .param("new_path", new_path);
 
             graph
                 .run(actual_delete_q)
@@ -181,12 +178,11 @@ impl Neo4jClient {
         }
 
         // Step 2: Update old_path to new_path
-        let update_q = query(
-            "MATCH (f:File {repo: $repo, path: $old_path}) SET f.path = $new_path"
-        )
-        .param("repo", repo)
-        .param("old_path", old_path)
-        .param("new_path", new_path);
+        let update_q =
+            query("MATCH (f:File {repo: $repo, path: $old_path}) SET f.path = $new_path")
+                .param("repo", repo)
+                .param("old_path", old_path)
+                .param("new_path", new_path);
 
         graph
             .run(update_q)
@@ -474,6 +470,127 @@ impl Neo4jClient {
             .execute(q)
             .await
             .map_err(|e| format!("Failed to get top files: {}", e))?;
+
+        let mut repos_with_files = Vec::new();
+        while let Ok(Some(row)) = result.next().await {
+            let repo: String = row.get::<String>("repo").unwrap_or_default();
+            let repo_url: Option<String> = row.get::<String>("repo_url").ok();
+            let files_data: Vec<serde_json::Value> = row
+                .get::<Vec<serde_json::Value>>("files")
+                .unwrap_or_default();
+
+            let files: Vec<RepoFile> = files_data
+                .into_iter()
+                .map(|v| {
+                    let path = v
+                        .get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let hub_score = v.get("hub_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                    RepoFile { path, hub_score }
+                })
+                .collect();
+
+            repos_with_files.push(RepoWithFiles {
+                repo,
+                repo_url: repo_url.unwrap_or_default(),
+                files,
+            });
+        }
+
+        Ok(repos_with_files)
+    }
+
+    pub async fn get_low_risk_files(
+        &self,
+        limit: i64,
+        extension: &str,
+    ) -> Result<Vec<RepoWithFiles>, String> {
+        let graph = self.graph.lock().await;
+
+        let pattern = format!(".{}", extension);
+
+        let count_q = query(
+            "MATCH (f:File) \
+             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+             RETURN count(f) AS total"
+        )
+        .param("ext", pattern.clone());
+
+        let mut count_result = graph
+            .execute(count_q)
+            .await
+            .map_err(|e| format!("Failed to count files: {}", e))?;
+
+        let total: i64 = if let Ok(Some(row)) = count_result.next().await {
+            row.get::<i64>("total").unwrap_or(0)
+        } else {
+            0
+        };
+
+        if total == 0 {
+            return Ok(Vec::new());
+        }
+
+        let effective_limit = limit.min(total);
+
+        let needed_pct = (effective_limit as f64 / total as f64) * 100.0;
+        let lower_pct = (25.0 - needed_pct / 2.0).max(0.0) / 100.0;
+        let upper_pct = (25.0 + needed_pct / 2.0).min(100.0) / 100.0;
+
+        let lower_idx = (total as f64 * lower_pct).floor() as i64;
+        let upper_idx = (total as f64 * upper_pct).floor() as i64;
+
+        let (lower_value, upper_value): (f64, f64) = if lower_pct >= upper_pct {
+            (f64::MIN, f64::MAX)
+        } else {
+            let percentile_q = query(
+                "MATCH (f:File) \
+                 WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+                 WITH f ORDER BY f.hub_score ASC \
+                 WITH collect(f.hub_score) AS scores \
+                 RETURN \
+                   scores[$lower_idx] AS lower_value, \
+                   scores[$upper_idx] AS upper_value"
+            )
+            .param("ext", pattern.clone())
+            .param("lower_idx", lower_idx)
+            .param("upper_idx", upper_idx);
+
+            let mut percentile_result = graph
+                .execute(percentile_q)
+                .await
+                .map_err(|e| format!("Failed to get percentile values: {}", e))?;
+
+            if let Ok(Some(row)) = percentile_result.next().await {
+                let lower: f64 = row.get::<f64>("lower_value").unwrap_or(0.0);
+                let upper: f64 = row.get::<f64>("upper_value").unwrap_or(0.0);
+                (lower, upper)
+            } else {
+                return Ok(Vec::new());
+            }
+        };
+
+        let q = query(
+            "MATCH (f:File) \
+             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL \
+               AND f.hub_score >= $lower_value AND f.hub_score <= $upper_value \
+               AND f.path ENDS WITH $ext \
+             WITH f ORDER BY f.hub_score ASC LIMIT $limit \
+             MATCH (r:Repository {name: f.repo}) \
+             RETURN f.repo AS repo, r.url AS repo_url, collect({path: f.path, hub_score: f.hub_score}) AS files \
+             ORDER BY repo"
+        )
+        .param("limit", effective_limit)
+        .param("ext", pattern)
+        .param("lower_value", lower_value)
+        .param("upper_value", upper_value);
+
+        let mut result = graph
+            .execute(q)
+            .await
+            .map_err(|e| format!("Failed to get low risk files: {}", e))?;
 
         let mut repos_with_files = Vec::new();
         while let Ok(Some(row)) = result.next().await {
