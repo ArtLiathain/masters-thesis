@@ -451,20 +451,41 @@ impl Neo4jClient {
         &self,
         limit: i64,
         extension: &str,
+        ignore_repos: &[String],
     ) -> Result<Vec<RepoWithFiles>, String> {
         let graph = self.graph.lock().await;
 
         let pattern = format!(".{}", extension);
-        let q = query(
+
+        let mut where_clauses = vec![
+            "f.deleted_at_commit IS NULL".to_string(),
+            "f.hub_score IS NOT NULL".to_string(),
+            "f.path ENDS WITH $ext".to_string(),
+        ];
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            where_clauses.push(format!(
+                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
+                i
+            ));
+        }
+        let where_clause = where_clauses.join(" AND ");
+
+        let q = query(&format!(
             "MATCH (f:File) \
-             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+             WHERE {} \
              WITH f ORDER BY f.hub_score DESC LIMIT $limit \
-             MATCH (r:Repository {name: f.repo}) \
-             RETURN f.repo AS repo, r.url AS repo_url, collect({path: f.path, hub_score: f.hub_score}) AS files \
-             ORDER BY repo"
-        )
+             MATCH (r:Repository {{name: f.repo}}) \
+             RETURN f.repo AS repo, r.url AS repo_url, collect({{path: f.path, hub_score: f.hub_score}}) AS files \
+             ORDER BY repo",
+            where_clause
+        ))
         .param("limit", limit)
         .param("ext", pattern);
+
+        let mut q = q;
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            q = q.param(&format!("ignore_{}", i), ignore.as_str());
+        }
 
         let mut result = graph
             .execute(q)
@@ -506,17 +527,37 @@ impl Neo4jClient {
         &self,
         limit: i64,
         extension: &str,
+        ignore_repos: &[String],
     ) -> Result<Vec<RepoWithFiles>, String> {
         let graph = self.graph.lock().await;
 
         let pattern = format!(".{}", extension);
 
-        let count_q = query(
+        let mut base_where_clauses = vec![
+            "f.deleted_at_commit IS NULL".to_string(),
+            "f.hub_score IS NOT NULL".to_string(),
+            "f.path ENDS WITH $ext".to_string(),
+        ];
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            base_where_clauses.push(format!(
+                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
+                i
+            ));
+        }
+        let base_where = base_where_clauses.join(" AND ");
+
+        let count_q = query(&format!(
             "MATCH (f:File) \
-             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
-             RETURN count(f) AS total"
-        )
+             WHERE {} \
+             RETURN count(f) AS total",
+            base_where
+        ))
         .param("ext", pattern.clone());
+
+        let mut count_q = count_q;
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            count_q = count_q.param(&format!("ignore_{}", i), ignore.as_str());
+        }
 
         let mut count_result = graph
             .execute(count_q)
@@ -545,18 +586,24 @@ impl Neo4jClient {
         let (lower_value, upper_value): (f64, f64) = if lower_pct >= upper_pct {
             (f64::MIN, f64::MAX)
         } else {
-            let percentile_q = query(
+            let percentile_q = query(&format!(
                 "MATCH (f:File) \
-                 WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+                 WHERE {} \
                  WITH f ORDER BY f.hub_score ASC \
                  WITH collect(f.hub_score) AS scores \
                  RETURN \
                    scores[$lower_idx] AS lower_value, \
-                   scores[$upper_idx] AS upper_value"
-            )
+                   scores[$upper_idx] AS upper_value",
+                base_where
+            ))
             .param("ext", pattern.clone())
             .param("lower_idx", lower_idx)
             .param("upper_idx", upper_idx);
+
+            let mut percentile_q = percentile_q;
+            for (i, ignore) in ignore_repos.iter().enumerate() {
+                percentile_q = percentile_q.param(&format!("ignore_{}", i), ignore.as_str());
+            }
 
             let mut percentile_result = graph
                 .execute(percentile_q)
@@ -572,20 +619,37 @@ impl Neo4jClient {
             }
         };
 
-        let q = query(
+        let mut where_clauses = vec![
+            "f.deleted_at_commit IS NULL".to_string(),
+            "f.hub_score IS NOT NULL".to_string(),
+            format!("f.hub_score >= {}", lower_value),
+            format!("f.hub_score <= {}", upper_value),
+            "f.path ENDS WITH $ext".to_string(),
+        ];
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            where_clauses.push(format!(
+                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
+                i
+            ));
+        }
+        let where_clause = where_clauses.join(" AND ");
+
+        let q = query(&format!(
             "MATCH (f:File) \
-             WHERE f.deleted_at_commit IS NULL AND f.hub_score IS NOT NULL \
-               AND f.hub_score >= $lower_value AND f.hub_score <= $upper_value \
-               AND f.path ENDS WITH $ext \
+             WHERE {} \
              WITH f ORDER BY f.hub_score ASC LIMIT $limit \
-             MATCH (r:Repository {name: f.repo}) \
-             RETURN f.repo AS repo, r.url AS repo_url, collect({path: f.path, hub_score: f.hub_score}) AS files \
-             ORDER BY repo"
-        )
+             MATCH (r:Repository {{name: f.repo}}) \
+             RETURN f.repo AS repo, r.url AS repo_url, collect({{path: f.path, hub_score: f.hub_score}}) AS files \
+             ORDER BY repo",
+            where_clause
+        ))
         .param("limit", effective_limit)
-        .param("ext", pattern)
-        .param("lower_value", lower_value)
-        .param("upper_value", upper_value);
+        .param("ext", pattern);
+
+        let mut q = q;
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            q = q.param(&format!("ignore_{}", i), ignore.as_str());
+        }
 
         let mut result = graph
             .execute(q)

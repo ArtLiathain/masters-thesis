@@ -75,6 +75,9 @@ struct CloneArgs {
 
     #[arg(long, default_value = "./repo_cache", hide = true)]
     path: String,
+
+    #[arg(short, long, num_args = 0.., default_value = "")]
+    ignore: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -101,6 +104,9 @@ struct CopyTopFilesArgs {
 
     #[arg(short, long, default_value = "cpp")]
     extension: String,
+
+    #[arg(short, long, num_args = 0.., default_value = "")]
+    ignore: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -164,6 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.input,
                 cli.neo4j_uri,
                 args.path,
+                args.ignore,
             )
             .await?;
             println!("Successfully analyzed all repositories");
@@ -190,29 +197,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Extension: {}", args.extension);
             println!("Neo4j URI: {}", cli.neo4j_uri);
 
-            match args.risk.as_str() {
-                "high" => {
-                    repo_analyser::entrypoint::copy_top_files(
-                        cli.neo4j_uri,
-                        args.limit,
-                        args.output,
-                        args.extension,
-                    )
-                    .await?;
-                }
-                "low" => {
-                    repo_analyser::entrypoint::copy_low_risk_files(
-                        cli.neo4j_uri,
-                        args.limit,
-                        args.output,
-                        args.extension,
-                    )
-                    .await?;
-                }
-                _ => {
-                    return Err("Risk must be 'high' or 'low'".into());
-                }
-            }
+            repo_analyser::entrypoint::copy_files(
+                cli.neo4j_uri,
+                args.limit,
+                args.output,
+                args.extension,
+                args.ignore.clone(),
+                &args.risk,
+            )
+            .await?;
             println!("Successfully copied all files");
         }
         Commands::Metrics(args) => {

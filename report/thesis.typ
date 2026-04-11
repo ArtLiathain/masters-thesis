@@ -241,5 +241,10 @@ The final balanced dataset consists of 4,000 observations. This 50/50 class dist
 == Evaluation Framework
 
 
+= Future Work
+- This should be a black box model that can work in AI loops where a false positive is less impactful
+- Use larger dataset samples and apply it to more domains
+- Use other models that are not human explainable
+
 #bibliography("references.bib")
 
