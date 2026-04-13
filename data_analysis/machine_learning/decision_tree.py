@@ -26,7 +26,7 @@ import numpy as np
 import warnings
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from te2rules.explainer import ModelExplainer
 
 # %%
@@ -38,7 +38,7 @@ print(f"\nTarget distribution:\n{df['is_high_risk'].value_counts()}")
 # %%
 df['repo'] = df['file_path'].str.split('__').str[0]
 print(f"Total unique repos: {df['repo'].nunique()}")
-print(f"\nTop 10 repos by file count:")
+print("\nTop 10 repos by file count:")
 print(df['repo'].value_counts().head(10))
 
 df_with_repo = df.copy()
@@ -85,9 +85,6 @@ for col in ['halstead_volume', 'halstead_effort', 'loc_sloc', 'loc_ploc', 'halst
     df_fe[f'{col}_log'] = np.log1p(df_fe[col])
 
 numeric_df = df_fe.select_dtypes(include=[np.number])
-zero_var_cols = numeric_df.columns[numeric_df.std() == 0].tolist()
-df_fe = df_fe.drop(columns=zero_var_cols)
-print(f"Dropped zero-variance columns: {zero_var_cols}")
 
 target_col = 'is_high_risk'
 exclude_cols = ['file_path', 'repo', target_col]
@@ -111,52 +108,28 @@ print(f"Feature engineered dataset shape: {X.shape}")
 # %%
 
 print("\n" + "="*60)
-print("PHASE 1: ENHANCED FEATURE ENGINEERING")
+print("ENHANCED FEATURE ENGINEERING")
 print("="*60)
 
 X_enhanced = X.copy()
 
 key_features = ['halstead_difficulty', 'halstead_effort', 'halstead_volume',
                 'wmc_cyclomatic', 'cyclomatic_cyclomatic', 'loc_sloc',
-                'mi_mi_original', 'mi_mi_sei', 'nom_functions', 'cognitive']
+                'nom_functions', 'cognitive']
 
 existing_features = [f for f in key_features if f in X_enhanced.columns]
-print(f"Found {len(existing_features)} key features for interactions")
+print(f"Found {len(existing_features)} key features for polynomial features")
 
-for i, f1 in enumerate(existing_features):
-    for f2 in existing_features[i+1:]:
-        if f1 != f2:
-            X_enhanced[f'{f1}_x_{f2}'] = X_enhanced[f1] * X_enhanced[f2]
+poly = PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)
+X_key = X_enhanced[existing_features].copy()
+poly_features = poly.fit_transform(X_key)
+poly_feature_names = poly.get_feature_names_out(existing_features)
 
-ratio_pairs = [
-    ('halstead_effort', 'loc_sloc'),
-    ('wmc_cyclomatic', 'nom_functions'),
-    ('cognitive_sum', 'cyclomatic_cyclomatic_sum'),
-    ('halstead_difficulty', 'halstead_volume'),
-    ('nexits_exit_sum', 'nom_functions'),
-    ('loc_sloc', 'loc_ploc'),
-]
+for i, name in enumerate(poly_feature_names):
+    X_enhanced[f'poly_{name}'] = poly_features[:, i]
 
-for f1, f2 in ratio_pairs:
-    if f1 in X_enhanced.columns and f2 in X_enhanced.columns:
-        X_enhanced[f'{f1}_div_{f2}'] = X_enhanced[f1] / (X_enhanced[f2] + 1)
+print(f"Added {len(poly_feature_names)} polynomial features")
 
-percentile_cols = ['halstead_difficulty', 'wmc_cyclomatic', 'loc_sloc',
-                   'halstead_effort', 'cognitive_sum']
-for col in percentile_cols:
-    if col in X_enhanced.columns:
-        X_enhanced[f'{col}_high'] = (
-            X_enhanced[col] > X_enhanced[col].quantile(0.75)).astype(int)
-        X_enhanced[f'{col}_low'] = (
-            X_enhanced[col] < X_enhanced[col].quantile(0.25)).astype(int)
-
-for col in percentile_cols:
-    if col in X_enhanced.columns:
-        q75, q25 = X_enhanced[col].quantile(
-            0.75), X_enhanced[col].quantile(0.25)
-        iqr = q75 - q25
-        upper = q75 + 1.5 * iqr
-        X_enhanced[f'{col}_outlier'] = (X_enhanced[col] > upper).astype(int)
 
 X_enhanced.replace([np.inf, -np.inf], np.nan, inplace=True)
 X_enhanced = X_enhanced.fillna(X_enhanced.median())
@@ -166,7 +139,7 @@ print(f"Enhanced feature count: {X_enhanced.shape[1]}")
 # %%
 
 print("\n" + "="*60)
-print("PHASE 2: FEATURE SELECTION")
+print("FEATURE SELECTION")
 print("="*60)
 
 corr_matrix = X_enhanced.corr().abs()
@@ -175,6 +148,26 @@ upper = corr_matrix.where(
 to_drop = [column for column in upper.columns if any(upper[column] > 0.90)]
 print(f"Dropping {len(to_drop)} highly correlated features (>0.90)")
 X_selected = X_enhanced.drop(columns=to_drop)
+
+plt.figure(figsize=(16, 12))
+corr_before = X_enhanced.corr().abs()
+mask = np.triu(np.ones_like(corr_before, dtype=bool))
+sns.heatmap(corr_before, mask=mask, cmap='coolwarm', center=0.5,
+            annot=False, square=True, linewidths=0.5)
+plt.title('Feature Correlation Matrix (Before Pruning)', fontsize=14)
+plt.tight_layout()
+plt.show()
+
+high_corr_pairs = []
+for col in upper.columns:
+    for idx in upper.index:
+        if upper.loc[idx, col] > 0.90:
+            high_corr_pairs.append((idx, col, upper.loc[idx, col]))
+
+print(f"\nHighly correlated pairs (>0.90) being dropped ({
+      len(high_corr_pairs)} total):")
+for f1, f2, corr in high_corr_pairs[:15]:
+    print(f"  {f1} <-> {f2}: {corr:.3f}")
 
 var_thresh = VarianceThreshold(threshold=0.01)
 X_selected = pd.DataFrame(
@@ -227,7 +220,7 @@ print(f"Selected features: {list(X_final.columns)}")
 # %%
 
 print("\n" + "="*60)
-print("PHASE 3: RANDOM FOREST WITH 5-FOLD CROSS-VALIDATION")
+print("RANDOM FOREST WITH 5-FOLD CROSS-VALIDATION")
 print("="*60)
 
 
@@ -288,11 +281,10 @@ print("RANDOM FOREST RULE EXTRACTION (te2rules)")
 print("="*60)
 
 explainer = ModelExplainer(
-    rf_clf,
-    X_final.values,
+    model=rf_clf,
     feature_names=list(X_final.columns)
 )
-rf_rules = explainer.explain()
+rf_rules = explainer.explain(X_final.values, y_encoded)
 print("\nExtracted Rules from Random Forest:")
 print(rf_rules)
 
@@ -436,7 +428,8 @@ dt_cv_f1 = cross_val_score(dt_clf, X_final, y_encoded, cv=cv, scoring='f1')
 
 print("\nDecision Tree 5-Fold Cross-Validation Results:")
 print(f"Accuracy:  {dt_cv_accuracy.mean():.4f} +/- {dt_cv_accuracy.std():.4f}")
-print(f"Precision: {dt_cv_precision.mean():.4f} +/- {dt_cv_precision.std():.4f}")
+print(f"Precision: {dt_cv_precision.mean()
+      :.4f} +/- {dt_cv_precision.std():.4f}")
 print(f"Recall:    {dt_cv_recall.mean():.4f} +/- {dt_cv_recall.std():.4f}")
 print(f"F1 Score:  {dt_cv_f1.mean():.4f} +/- {dt_cv_f1.std():.4f}")
 

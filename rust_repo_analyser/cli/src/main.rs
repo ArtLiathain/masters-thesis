@@ -20,6 +20,7 @@ enum Commands {
     Verify(VerifyArgs),
     Copy(CopyTopFilesArgs),
     Metrics(MetricsArgs),
+    SonarAnalyze(SonarAnalyzeArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -119,6 +120,31 @@ struct MetricsArgs {
     output: String,
 }
 
+#[derive(Parser, Debug)]
+#[command(about = "Analyze a local repo using SonarQube for risk labels", long_about = None)]
+struct SonarAnalyzeArgs {
+    #[arg(short, long)]
+    repo: String,
+
+    #[arg(long, default_value = "http://localhost:9000")]
+    sonar_url: String,
+
+    #[arg(long, default_value = "admin")]
+    username: String,
+
+    #[arg(long, default_value = "admin")]
+    token: String,
+
+    #[arg(long, default_value = "189")]
+    td_threshold: i64,
+
+    #[arg(long, default_value = "data/sonar_files")]
+    output_folder: String,
+
+    #[arg(long, default_value = "data/sonar_metrics.csv")]
+    output_csv: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -215,6 +241,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.output,
             )?;
             println!("Successfully analyzed file metrics");
+        }
+        Commands::SonarAnalyze(args) => {
+            println!("Analyzing repository with SonarQube: {}", args.repo);
+            println!("SonarQube URL: {}", args.sonar_url);
+            println!("TD threshold: {} minutes", args.td_threshold);
+
+            repo_analyser::entrypoint::analyze_with_sonar(
+                args.repo,
+                args.sonar_url,
+                args.username,
+                args.token,
+                args.td_threshold,
+                args.output_folder,
+                args.output_csv,
+            )
+            .await?;
+            println!("Successfully analyzed with SonarQube");
         }
     }
 

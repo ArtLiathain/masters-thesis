@@ -462,7 +462,7 @@ impl Neo4jClient {
             "f.hub_score IS NOT NULL".to_string(),
             "f.path ENDS WITH $ext".to_string(),
         ];
-        for (i, ignore) in ignore_repos.iter().enumerate() {
+        for (i, _) in ignore_repos.iter().enumerate() {
             where_clauses.push(format!(
                 "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
                 i
@@ -538,7 +538,7 @@ impl Neo4jClient {
             "f.hub_score IS NOT NULL".to_string(),
             "f.path ENDS WITH $ext".to_string(),
         ];
-        for (i, ignore) in ignore_repos.iter().enumerate() {
+        for (i, _) in ignore_repos.iter().enumerate() {
             base_where_clauses.push(format!(
                 "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
                 i
@@ -626,7 +626,7 @@ impl Neo4jClient {
             format!("f.hub_score <= {}", upper_value),
             "f.path ENDS WITH $ext".to_string(),
         ];
-        for (i, ignore) in ignore_repos.iter().enumerate() {
+        for (i, _) in ignore_repos.iter().enumerate() {
             where_clauses.push(format!(
                 "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
                 i

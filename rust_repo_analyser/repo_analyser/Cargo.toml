@@ -13,3 +13,4 @@ neo4rs = "0.8"
 tokio = { version = "1", features = ["full"] }
 rust-code-analysis = { git = "https://github.com/mozilla/rust-code-analysis" }
 csv = "1.4.0"
+reqwest = { version = "0.12", features = ["json"] }

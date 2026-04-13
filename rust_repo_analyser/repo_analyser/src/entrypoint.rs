@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::git_analyzer::GitAnalyzer;
+use crate::sonar_client::{label_from_td, SonarClient};
 use crate::storage::Neo4jClient;
 
 fn extract_repo_name(url: &str) -> Option<String> {
@@ -233,6 +234,82 @@ pub async fn copy_files(
     }
 
     println!("Done! Files saved to {}", output_dir);
+
+    Ok(())
+}
+
+pub async fn analyze_with_sonar(
+    repo_path: String,
+    sonar_url: String,
+    username: String,
+    token: String,
+    td_threshold_minutes: i64,
+    output_folder: String,
+    output_csv: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repo_name = Path::new(&repo_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    println!("Analyzing repository: {}", repo_name);
+
+    let sonar_client = SonarClient::new(&sonar_url, &username, &token);
+
+    println!("Fetching technical debt data from SonarQube...");
+    let td_map = sonar_client.get_file_technical_debt(&repo_name).await?;
+
+    println!(
+        "Found TD data for {} files",
+        td_map.len()
+    );
+
+    let output_path = Path::new(&output_folder);
+    let high_risk_dir = output_path.join("high");
+    let low_risk_dir = output_path.join("low");
+
+    fs::create_dir_all(&high_risk_dir)?;
+    fs::create_dir_all(&low_risk_dir)?;
+
+    let mut high_risk_count = 0;
+    let mut low_risk_count = 0;
+
+    for (file_path, td_minutes) in &td_map {
+        let is_high_risk = label_from_td(*td_minutes, td_threshold_minutes);
+
+        let source_file = Path::new(&repo_path).join(file_path);
+        if !source_file.exists() {
+            println!("  File not found: {}", file_path);
+            continue;
+        }
+
+        let dest_dir = if is_high_risk { &high_risk_dir } else { &low_risk_dir };
+        let dest_file = dest_dir.join(file_path);
+
+        if let Some(parent) = dest_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::copy(&source_file, &dest_file)?;
+
+        if is_high_risk {
+            high_risk_count += 1;
+            println!("  [HIGH] {} ({} min)", file_path, td_minutes);
+        } else {
+            low_risk_count += 1;
+            println!("  [LOW] {} ({} min)", file_path, td_minutes);
+        }
+    }
+
+    println!(
+        "Copied {} high-risk and {} low-risk files",
+        high_risk_count, low_risk_count
+    );
+
+    println!("Computing metrics and generating CSV...");
+    crate::file_metrics_analyser::convert_balanced_metrics(output_folder, output_csv.clone())?;
+
+    println!("Done! CSV saved to {}", output_csv);
 
     Ok(())
 }
