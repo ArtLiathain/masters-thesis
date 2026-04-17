@@ -131,3 +131,12 @@ Fixes
 - Develop a coherent argument throughout the paper -> Need a bit of a flow now.
 - Hub score needs a justification from both literature and comparison to real world analysis
 
+
+# Feedback 3
+- https://piechowski.io/post/git-commands-before-reading-code/
+The Git Commands I Run Before Reading Any Code
+Five git commands that tell you where a codebase hurts before you open a single file. Churn hotspots, bus factor, bug clusters, and crisis patterns. Repository analysis over dataset creation
+- Chidamber and Kemerer (CK) metrics
+- https://arxiv.org/abs/2604.04809 software energy smells
+- https://www.computer.org/product/education/professional-software-engineering-master-certification
+- https://www.computer.org/product/education/professional-software-developer-certification
