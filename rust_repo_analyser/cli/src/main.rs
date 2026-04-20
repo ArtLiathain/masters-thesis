@@ -20,7 +20,7 @@ enum Commands {
     Verify(VerifyArgs),
     Copy(CopyTopFilesArgs),
     Metrics(MetricsArgs),
-    SonarAnalyze(SonarAnalyzeArgs),
+    CodeSceneAnalyze(CodeSceneAnalyzeArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -77,11 +77,11 @@ struct CloneArgs {
     #[arg(long, default_value = "./repo_cache", hide = true)]
     path: String,
 
-    #[arg(short, long, num_args = 0.., default_value = "")]
+    #[arg(short, long, num_args = 0..)]
     ignore: Vec<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(about = "Verify and retrieve graph data from Neo4j", long_about = None)]
 struct VerifyArgs {
     #[arg(short, long)]
@@ -106,7 +106,7 @@ struct CopyTopFilesArgs {
     #[arg(short, long, default_value = "cpp")]
     extension: String,
 
-    #[arg(short, long, num_args = 0.., default_value = "")]
+    #[arg(short, long, num_args = 0..)]
     ignore: Vec<String>,
 }
 
@@ -121,27 +121,28 @@ struct MetricsArgs {
 }
 
 #[derive(Parser, Debug)]
-#[command(about = "Analyze a local repo using SonarQube for risk labels", long_about = None)]
-struct SonarAnalyzeArgs {
+#[command(about = "Analyze a local repo using CodeScene for risk labels", long_about = None)]
+struct CodeSceneAnalyzeArgs {
     #[arg(short, long)]
     repo: String,
 
-    #[arg(long, default_value = "http://localhost:9000")]
-    sonar_url: String,
-
-    #[arg(long, default_value = "admin")]
-    username: String,
-
-    #[arg(long, default_value = "admin")]
+    #[arg(long)]
     token: String,
 
-    #[arg(long, default_value = "189")]
-    td_threshold: i64,
+    #[arg(long)]
+    project_id: String,
 
-    #[arg(long, default_value = "data/sonar_files")]
-    output_folder: String,
+    #[arg(long, default_value = "9.0")]
+    threshold: f64,
 
-    #[arg(long, default_value = "data/sonar_metrics.csv")]
+    #[arg(
+        long,
+        default_value = ".cpp",
+        help = "Comma-separated file extensions to filter (e.g., '.cpp,.h,.hpp')"
+    )]
+    extensions: String,
+
+    #[arg(long, default_value = "../results/codescene_metrics.csv")]
     output_csv: String,
 }
 
@@ -242,22 +243,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             println!("Successfully analyzed file metrics");
         }
-        Commands::SonarAnalyze(args) => {
-            println!("Analyzing repository with SonarQube: {}", args.repo);
-            println!("SonarQube URL: {}", args.sonar_url);
-            println!("TD threshold: {} minutes", args.td_threshold);
+        Commands::CodeSceneAnalyze(args) => {
+            println!("Analyzing repository with CodeScene: {}", args.repo);
+            println!("Code health threshold: {}", args.threshold);
 
-            repo_analyser::entrypoint::analyze_with_sonar(
+            repo_analyser::entrypoint::analyze_with_codescene(
                 args.repo,
-                args.sonar_url,
-                args.username,
                 args.token,
-                args.td_threshold,
-                args.output_folder,
+                args.project_id,
+                args.threshold,
+                args.extensions,
                 args.output_csv,
             )
             .await?;
-            println!("Successfully analyzed with SonarQube");
+            println!("Successfully analyzed with CodeScene");
         }
     }
 

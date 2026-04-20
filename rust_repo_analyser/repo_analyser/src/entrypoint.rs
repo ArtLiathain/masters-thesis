@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::git_analyzer::GitAnalyzer;
-use crate::sonar_client::{label_from_td, SonarClient};
+use crate::codescene_client::{label_from_code_health, CodeSceneClient};
 use crate::storage::Neo4jClient;
 
 fn extract_repo_name(url: &str) -> Option<String> {
@@ -238,15 +238,17 @@ pub async fn copy_files(
     Ok(())
 }
 
-pub async fn analyze_with_sonar(
+pub async fn analyze_with_codescene(
     repo_path: String,
-    sonar_url: String,
-    username: String,
     token: String,
-    td_threshold_minutes: i64,
-    output_folder: String,
+    project_id: String,
+    threshold: f64,
+    file_extensions: String,
     output_csv: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use csv::Writer;
+    use rust_code_analysis::get_function_spaces;
+
     let repo_name = Path::new(&repo_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -254,60 +256,77 @@ pub async fn analyze_with_sonar(
 
     println!("Analyzing repository: {}", repo_name);
 
-    let sonar_client = SonarClient::new(&sonar_url, &username, &token);
+    let codescene_client = CodeSceneClient::new("https://api.codescene.io", &token);
 
-    println!("Fetching technical debt data from SonarQube...");
-    let td_map = sonar_client.get_file_technical_debt(&repo_name).await?;
+    println!("Fetching code health data from CodeScene...");
+    let health_map = codescene_client.get_file_code_health(&project_id, &repo_name, &file_extensions).await?;
 
     println!(
-        "Found TD data for {} files",
-        td_map.len()
+        "Found code health data for {} files",
+        health_map.len()
     );
 
-    let output_path = Path::new(&output_folder);
-    let high_risk_dir = output_path.join("high");
-    let low_risk_dir = output_path.join("low");
-
-    fs::create_dir_all(&high_risk_dir)?;
-    fs::create_dir_all(&low_risk_dir)?;
+    let mut wtr = Writer::from_path(&output_csv)?;
 
     let mut high_risk_count = 0;
     let mut low_risk_count = 0;
+    let mut processed_count = 0;
 
-    for (file_path, td_minutes) in &td_map {
-        let is_high_risk = label_from_td(*td_minutes, td_threshold_minutes);
-
+    for (file_path, code_health) in &health_map {
         let source_file = Path::new(&repo_path).join(file_path);
         if !source_file.exists() {
-            println!("  File not found: {}", file_path);
             continue;
         }
 
-        let dest_dir = if is_high_risk { &high_risk_dir } else { &low_risk_dir };
-        let dest_file = dest_dir.join(file_path);
+        let is_high_risk = label_from_code_health(*code_health, threshold);
 
-        if let Some(parent) = dest_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        let file_as_bytes = match fs::read(&source_file) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("  Warning: Could not read file {}: {}", file_path, e);
+                continue;
+            }
+        };
 
-        fs::copy(&source_file, &dest_file)?;
+        let results = match get_function_spaces(
+            &rust_code_analysis::LANG::Cpp,
+            file_as_bytes,
+            &source_file,
+            None,
+        ) {
+            Some(r) => r,
+            None => {
+                eprintln!("  Warning: Could not analyze file: {}", file_path);
+                continue;
+            }
+        };
+
+        let flattened = crate::file_metrics_analyser::flatten_metrics(
+            file_path,
+            &results.metrics,
+            is_high_risk,
+        );
+
+        wtr.serialize(flattened)?;
 
         if is_high_risk {
             high_risk_count += 1;
-            println!("  [HIGH] {} ({} min)", file_path, td_minutes);
         } else {
             low_risk_count += 1;
-            println!("  [LOW] {} ({} min)", file_path, td_minutes);
+        }
+        processed_count += 1;
+
+        if processed_count % 100 == 0 {
+            println!("  Processed {}/{} files", processed_count, health_map.len());
         }
     }
 
-    println!(
-        "Copied {} high-risk and {} low-risk files",
-        high_risk_count, low_risk_count
-    );
+    wtr.flush()?;
 
-    println!("Computing metrics and generating CSV...");
-    crate::file_metrics_analyser::convert_balanced_metrics(output_folder, output_csv.clone())?;
+    println!(
+        "Analyzed {} files: {} high-risk, {} low-risk",
+        processed_count, high_risk_count, low_risk_count
+    );
 
     println!("Done! CSV saved to {}", output_csv);
 

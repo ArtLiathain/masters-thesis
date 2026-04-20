@@ -1,0 +1,10 @@
+services:
+  codescene:
+    image: codescene/codescene
+    ports:
+      - "3003:3003"
+    volumes:
+      - codescene_data:/codescene
+
+volumes:
+  codescene_data:
