@@ -8,4 +8,4 @@ pub mod storage;
 pub use file_graph::{ChangedFile, Edge, FileGraphBuilder, FileNode};
 pub use git_analyzer::GitAnalyzer;
 pub use codescene_client::{label_from_code_health, CodeSceneClient};
-pub use storage::{GraphData, Neo4jClient};
+pub use storage::{GraphData, HubScoreData, Neo4jClient};

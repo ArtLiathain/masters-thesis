@@ -21,6 +21,7 @@ enum Commands {
     Copy(CopyTopFilesArgs),
     Metrics(MetricsArgs),
     CodeSceneAnalyze(CodeSceneAnalyzeArgs),
+    ExportHubScores(ExportHubScoresArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -146,6 +147,16 @@ struct CodeSceneAnalyzeArgs {
     output_csv: String,
 }
 
+#[derive(Parser, Debug)]
+#[command(about = "Export all hub scores to JSON", long_about = None)]
+struct ExportHubScoresArgs {
+    #[arg(long, default_value = ".cpp")]
+    extension: String,
+
+    #[arg(long, default_value = "../results/hub_scores.json")]
+    output: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -257,6 +268,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
             println!("Successfully analyzed with CodeScene");
+        }
+        Commands::ExportHubScores(args) => {
+            println!("Exporting hub scores for extension: {}", args.extension);
+            println!("Output: {}", args.output);
+            println!("Neo4j URI: {}", cli.neo4j_uri);
+
+            let client = repo_analyser::Neo4jClient::new(&cli.neo4j_uri).await?;
+            let hub_scores = client.get_all_hub_scores(&args.extension).await?;
+
+            let json = serde_json::to_string_pretty(&hub_scores)?;
+            std::fs::write(&args.output, json)?;
+            println!(
+                "Saved {} hub scores to {}",
+                hub_scores.len(),
+                args.output
+            );
         }
     }
 

@@ -27,6 +27,17 @@ pub struct GraphData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HubScoreData {
+    pub repo: String,
+    pub path: String,
+    pub hub_score: f64,
+    pub avg_coupling: f64,
+    pub commit_count: i64,
+    pub partner_count: i64,
+    pub churn: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoFile {
     pub path: String,
     pub hub_score: f64,
@@ -685,5 +696,51 @@ impl Neo4jClient {
         }
 
         Ok(repos_with_files)
+    }
+
+    pub async fn get_all_hub_scores(&self, extension: &str) -> Result<Vec<HubScoreData>, String> {
+        let graph = self.graph.lock().await;
+
+        let pattern = format!(".{}", extension);
+
+        let q = query(
+            "MATCH (f:File) \
+             WHERE f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+             RETURN f.repo as repo, f.path as path, f.hub_score as hub_score, \
+                    f.avg_coupling as avg_coupling, f.commit_count as commit_count, \
+                    f.partner_count as partner_count, f.additions as additions, \
+                    f.deletions as deletions \
+             ORDER BY f.hub_score DESC",
+        )
+        .param("ext", pattern);
+
+        let mut result = graph
+            .execute(q)
+            .await
+            .map_err(|e| format!("Failed to get hub scores: {}", e))?;
+
+        let mut files = Vec::new();
+        while let Ok(Some(row)) = result.next().await {
+            let repo: String = row.get::<String>("repo").unwrap_or_default();
+            let path: String = row.get::<String>("path").unwrap_or_default();
+            let hub_score: f64 = row.get::<f64>("hub_score").unwrap_or(0.0);
+            let avg_coupling: f64 = row.get::<f64>("avg_coupling").unwrap_or(0.0);
+            let commit_count: i64 = row.get::<i64>("commit_count").unwrap_or(0);
+            let partner_count: i64 = row.get::<i64>("partner_count").unwrap_or(0);
+            let additions: i64 = row.get::<i64>("additions").unwrap_or(0);
+            let deletions: i64 = row.get::<i64>("deletions").unwrap_or(0);
+
+            files.push(HubScoreData {
+                repo,
+                path,
+                hub_score,
+                avg_coupling,
+                commit_count,
+                partner_count,
+                churn: additions + deletions,
+            });
+        }
+
+        Ok(files)
     }
 }
