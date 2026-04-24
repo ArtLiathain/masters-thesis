@@ -26,7 +26,7 @@
   authors: (
     (name: "Art Ó Liatháin", email: "22363092@studentmail.ul.ie", affiliation: "University of Limerick"),
   ),
-  keywords: ("Static Analysis", "Machine Learning", "Architectural Technical Debt", "Maintability", "Research Software", "Temporal Coupling", "Random Forests", "Hueristic Based Dataset Generation"),
+  keywords: ("Static Analysis", "Machine Learning", "Architectural Technical Debt", "Maintability", "Research Software", "Temporal Coupling", "Random Forests", "Heuristic Based Dataset Generation"),
   date: "May 2026",
 )
 
@@ -49,6 +49,11 @@
 
 
 = Introduction
+
+Research software is no longer something that lives on the edge of research. It has become a driving force for how modern science is conducted, progressing modern developments such as complex genome sequencing techniques to the large data pipelines of the Hadron Collider
+
+The scale and rate of modern scientific discovery has put increasing pressure on manual verification. 
+
 
 Research software is almost always seen as a means to an end, a tool used to prove a hypothesis so a paper can be published. When you combine this mindset with the fact that roughly 90% of developers are rely on learning code through self teaching @hannay_how_2009, it leads to an epidemic of sub-optimal code within research projects.
 
@@ -254,7 +259,7 @@ This is a bespoke formula normalising per file metrics proportionally to reposit
 2. A logic file should not be highly coupled to many partner files. @cai_understanding_2025 empirically validated that coupling density directly increases maintenance overhead across 1,200 Google repositories.
 3. Files that change together despite lacking structural dependencies represent hidden architectural debt. @xiao_identifying_2016 identified these "Modularity Violations" as the most common and expensive form of architectural debt, where files co-change without explicit dependencies.
 
-This three-principle justification is not merely theoretical; it mirrors the approach of prior work that uses evolution history as ground truth for supervised learning. demonstrated that co-change information can produce higher-quality labels for code smell detection than expert annotation alone, validating the use of temporal coupling as an objective labeling mechanism for machine learning.
+This three-principle justification is not merely theoretical; it mirrors the approach of prior work that uses evolution history as ground truth for supervised learning. Demonstrated that co-change information can produce higher-quality labels for code smell detection than expert annotation alone, validating the use of temporal coupling as an objective labeling mechanism for machine learning.
 The formula was further substantiated where when benchmarking against codescene high risk files identified by codescene were also identified by this formula, while not all high risk files were identified, each of the high risk files identified were associated with an above average maintenance burden which evidences the ability of it.
 
 // NEEDS RESULTS TO BACK IT UP
