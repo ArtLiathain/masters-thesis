@@ -12,3 +12,16 @@ services:
       - NEO4J_dbms_memory_heap_max__size=4G
       - NEO4J_dbms_memory_pagecache_size=2G
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+
+  neo4j-test:
+    image: neo4j:latest
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    volumes:
+      - ./neo4j-test/data:/data
+      - ./neo4j-test/logs:/logs
+    environment:
+      - NEO4J_AUTH=none
+      - NEO4J_dbms_memory_heap_max__size=2G
+      - NEO4J_dbms_memory_pagecache_size=1G

@@ -27,7 +27,10 @@ from sklearn.feature_selection import SelectKBest, f_classif, VarianceThreshold
 from sklearn.tree import DecisionTreeClassifier, plot_tree, export_text
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
+from imblearn.over_sampling import SMOTE
 from te2rules.explainer import ModelExplainer
+from sklearn.model_selection import train_test_split
+from imblearn.pipeline import Pipeline as ImbPipeline
 
 # %%
 TRAIN_MODEL = True
@@ -149,6 +152,53 @@ if TRAIN_MODEL:
     df_train = pd.read_csv(TRAIN_CSV)
     print(f"Training data: {df_train.shape[0]} samples")
 
+    # %%
+    print("\n" + "="*60)
+    print("REPO-LEVEL METRICS")
+    print("="*60)
+
+    df_train['repo'] = df_train['file_path'].str.split('__').str[0]
+
+    repo_stats = df_train.groupby('repo').agg({
+        'file_path': 'count',
+        'is_high_risk': lambda x: x.sum(),
+        'loc_sloc': 'sum',
+        'halstead_volume': 'sum',
+        'halstead_effort': 'sum',
+        'wmc_cyclomatic': 'sum',
+        'cyclomatic_cyclomatic': 'sum',
+        'nom_functions': 'sum',
+        'cognitive': 'sum'
+    }).rename(columns={
+        'file_path': 'file_count',
+        'is_high_risk': 'high_risk_files',
+        'loc_sloc': 'total_sloc',
+        'halstead_volume': 'total_volume',
+        'halstead_effort': 'total_effort',
+        'wmc_cyclomatic': 'total_cyclomatic',
+        'cyclomatic_cyclomatic': 'total_path_complexity',
+        'nom_functions': 'total_functions',
+        'cognitive': 'total_cognitive'
+    })
+
+    repo_stats['low_risk_files'] = repo_stats['file_count'] - repo_stats['high_risk_files']
+    repo_stats['risk_ratio'] = repo_stats['high_risk_files'] / repo_stats['file_count']
+
+    print(f"Total repos: {len(repo_stats)}")
+    print(f"Total files: {repo_stats['file_count'].sum()}")
+    print(f"High-risk files: {repo_stats['high_risk_files'].sum()} ({repo_stats['high_risk_files'].sum() / repo_stats['file_count'].sum():.2%})")
+    print(f"Low-risk files: {repo_stats['low_risk_files'].sum()} ({repo_stats['low_risk_files'].sum() / repo_stats['file_count'].sum():.2%})")
+    print(f"Average files per repo: {repo_stats['file_count'].mean():.1f}")
+    print(f"Average risk ratio per repo: {repo_stats['risk_ratio'].mean():.2%}")
+
+    print("\nTop 10 repos by high-risk file count:")
+    top_risky = repo_stats.sort_values('high_risk_files', ascending=False)[['file_count', 'high_risk_files', 'low_risk_files', 'risk_ratio']].head(10)
+    print(top_risky.to_string())
+
+    print("\nTop 10 repos by risk ratio (min 5 files):")
+    top_ratio = repo_stats[repo_stats['file_count'] >= 5].sort_values('risk_ratio', ascending=False)[['file_count', 'high_risk_files', 'low_risk_files', 'risk_ratio']].head(10)
+    print(top_ratio.to_string())
+
     X_train, y_train, poly = engineer_features(df_train)
 
     print("\n" + "="*60)
@@ -156,7 +206,8 @@ if TRAIN_MODEL:
     print("="*60)
     value_counts = y_train.value_counts()
     print(value_counts)
-    print(f"\nClass imbalance ratio: {value_counts.max() / value_counts.min():.2f}:1")
+    print(f"\nClass imbalance ratio: {
+          value_counts.max() / value_counts.min():.2f}:1")
 
     plt.figure(figsize=(8, 5))
     value_counts.plot(kind='bar', color=['#3498db', '#e74c3c'])
@@ -183,27 +234,38 @@ if TRAIN_MODEL:
     print(f"Selected features: {list(X_train_final.columns)}")
     print(f"Training FE columns: {sorted(X_train_final.columns.tolist())}")
 
+    smote = SMOTE(sampling_strategy='minority', k_neighbors=5, random_state=42)
+    X_train_balanced, y_train_balanced = smote.fit_resample(
+        X_train_final, y_train_encoded)
+    print(f"\nAfter SMOTE: {
+          X_train_balanced.shape[0]} samples (was {X_train_final.shape[0]})")
+    print(f"Class distribution: {pd.Series(
+        y_train_balanced).value_counts().to_dict()}")
+
 
 # %%
 if TRAIN_MODEL:
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    pipeline = ImbPipeline([
+        ('smote', SMOTE(random_state=42)),
+        ('rf', RandomForestClassifier(random_state=42))
+    ])
 
     print("\n" + "="*60)
     print("RANDOM FOREST WITH 5-FOLD CROSS-VALIDATION")
     print("="*60)
 
     rf_param_grid = {
-        'n_estimators': [100, 300, 500],
-        'max_depth': [None, 10, 20, 30],
-        'min_samples_split': [2, 5, 10, 20],
-        'min_samples_leaf': [1, 4, 8],
-        'max_features': ['sqrt', 'log2'],
-        'class_weight': ['balanced', {0: 1, 1: 1.5}]
+        'rf__n_estimators': [100, 300, 500],
+        'rf__max_depth': [7, 10, 15, 20 , 30],
+        'rf__min_samples_split': [5, 10],
+        'rf__min_samples_leaf': [4, 8],
+        'rf__max_features': ['sqrt', 'log2'],
+        'rf__class_weight': ['balanced', {0: 1, 1: 3}, {0: 1, 1: 10}]
     }
 
-    rf_clf = RandomForestClassifier(random_state=42, n_jobs=-1, oob_score=True)
     rf_grid_search = GridSearchCV(
-        rf_clf, rf_param_grid, cv=cv, scoring='f1', n_jobs=-1
+        param_grid=rf_param_grid, cv=cv, estimator=pipeline, scoring='f1', n_jobs=-1
     )
     rf_grid_search.fit(X_train_final, y_train_encoded)
 
@@ -235,7 +297,7 @@ if TRAIN_MODEL:
 
     plt.figure(figsize=(8, 6))
     sns.heatmap(cv_cm, annot=True, fmt='d', cmap='Blues',
-               xticklabels=le.classes_, yticklabels=le.classes_)
+                xticklabels=le.classes_, yticklabels=le.classes_)
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
     plt.title('RF Cross-Validation Confusion Matrix')
@@ -245,14 +307,37 @@ if TRAIN_MODEL:
     print("RF CV confusion matrix saved to rf_cv_confusion_matrix.png")
 
     rf_clf.fit(X_train_final, y_train_encoded)
-    print(f"\nOOB Score: {rf_clf.oob_score_:.4f}")
+    rf_best_params = rf_grid_search.best_params_
+    rf_for_oob = RandomForestClassifier(
+        oob_score=True,
+        bootstrap=True,
+        random_state=42,
+        **{k.replace('rf__', ''): v for k, v in rf_best_params.items() if k.startswith('rf__')}
+    )
+    rf_for_oob.fit(X_train_final, y_train_encoded)
+    oob_val = rf_for_oob.oob_score_
+    print(f"\nOOB Score: {oob_val:.4f}")
 
     rf_feature_importance = pd.DataFrame({
         'feature': X_train_final.columns,
-        'importance': rf_clf.feature_importances_
+        'importance': rf_for_oob.feature_importances_
     }).sort_values('importance', ascending=False)
     print("\nRF Feature Importances (top 15):")
     print(rf_feature_importance.head(15))
+
+    plt.figure(figsize=(10, 8))
+    rf_top15 = rf_feature_importance.head(
+        15).sort_values('importance', ascending=True)
+    colors = sns.color_palette("viridis", 15)
+    sns.barplot(x='importance', y='feature', data=rf_top15, palette=colors)
+    plt.xlabel('Importance')
+    plt.ylabel('Feature')
+    plt.title('Random Forest Feature Importance (Top 15)')
+    plt.tight_layout()
+    plt.savefig('rf_feature_importance.png', dpi=150)
+    plt.show()
+    print("RF feature importance saved to rf_feature_importance.png")
+
     print(f"Target classes: {le.classes_}")
 
     os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
@@ -266,34 +351,91 @@ if TRAIN_MODEL:
     print(f"\nModel saved to {MODEL_OUTPUT_DIR}")
 
 # %%
+
 print("\n" + "="*60)
-print("RANDOM FOREST RULE EXTRACTION (te2rules)")
+print("OPTIMIZED RANDOM FOREST RULE EXTRACTION (te2rules)")
 print("="*60)
-#
-# explainer = ModelExplainer(
-#     model=rf_clf,
-#     feature_names=list(X_train_final.columns)
-# )
-# rf_rules = explainer.explain(X_train_final.values, y_train_encoded)
-# print("\nExtracted Rules from Random Forest:")
-# print(rf_rules)
+all_features = list(X_train_final.columns)
+
+_, X_sub, _, y_sub = train_test_split(
+    X_train_final,
+    y_train_encoded,
+    test_size=2000,  # Start with 1.5k; if fast, try 3k
+    stratify=y_train_encoded,
+    random_state=42
+)
+
+explainer = ModelExplainer(
+    model=rf_clf.named_steps['rf'],
+    feature_names=all_features
+)
+
+print(f"Extracting rules using {
+      len(all_features)} features and {len(X_sub)} samples...")
+rf_rules = explainer.explain(X_sub.values, y_sub)
+
+print("\nExtracted Rules from Random Forest:")
+print(rf_rules)
+
+
+# %%
+def evaluate_rules(rules_list, X_df, y_true):
+    results = []
+    
+    for rule in rules_list:
+        # Clean the rule for pandas query syntax
+        # te2rules uses '&' and '>', which pandas.query handles well
+        query_string = rule.replace('&', 'and')
+        
+        try:
+            # Find samples that satisfy the rule
+            matches = X_df.query(query_string)
+            support = len(matches)
+            
+            if support > 0:
+                # Calculate how many matches were actually the positive class (1)
+                matching_labels = y_true[matches.index]
+                precision = (matching_labels == 1).mean()
+                
+                results.append({
+                    'rule': rule,
+                    'support': support,
+                    'precision': precision,
+                    'coverage_pct': (support / len(X_df)) * 100
+                })
+        except Exception as e:
+            continue # Skip rules with parsing issues
+            
+    return pd.DataFrame(results).sort_values(by='support', ascending=False)
+
+# Run the evaluation
+rule_stats = evaluate_rules(rf_rules, X_sub, y_sub)
+
+print("Top 5 Most Important Rules (by Support):")
+pd.set_option('display.max_colwidth', None)
+print(rule_stats.head(5))
+print(len(rf_rules))
 
 # %%
 print("\n" + "="*60)
 print("DECISION TREE WITH 5-FOLD CROSS-VALIDATION")
 print("="*60)
 
+dt_pipeline = ImbPipeline([
+    ('smote', SMOTE(random_state=42)),
+    ('dt', DecisionTreeClassifier(random_state=42))
+])
+
 dt_param_grid = {
-    'max_depth': [5, 7],
-    'min_samples_split': [10, 20],
-    'min_samples_leaf': [5, 10],
-    'criterion': ['entropy'],
-    'class_weight': [{0: 1, 1: 2}]
+    'dt__max_depth': [3, 5, 7, 10, 15],
+    'dt__min_samples_split': [5, 10, 20, 50],
+    'dt__min_samples_leaf': [2, 5, 10, 20],
+    'dt__criterion': ['gini', 'entropy'],
+    'dt__class_weight': ['balanced', {0: 1, 1: 2}, {0: 1, 1: 3}, {0: 1, 1: 5}]
 }
 
-dt_clf = DecisionTreeClassifier(random_state=42)
 dt_grid_search = GridSearchCV(
-    dt_clf, dt_param_grid, cv=cv, scoring='f1', n_jobs=-1
+    dt_pipeline, dt_param_grid, cv=cv, scoring='f1', n_jobs=-1
 )
 dt_grid_search.fit(X_train_final, y_train_encoded)
 
@@ -322,19 +464,41 @@ dt_cv_cm = confusion_matrix(y_train_encoded, dt_cv_preds)
 print("\nDT CV Confusion Matrix:")
 print(dt_cv_cm)
 
-dt_clf.fit(X_train_final, y_train_encoded)
 dt_feature_importance = pd.DataFrame({
     'feature': X_train_final.columns,
-    'importance': dt_clf.feature_importances_
+    'importance': dt_clf.named_steps['dt'].feature_importances_
 }).sort_values('importance', ascending=False)
 print("\nDT Feature Importances (top 15):")
 print(dt_feature_importance.head(15))
 
+plt.figure(figsize=(8, 6))
+sns.heatmap(dt_cv_cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=le.classes_, yticklabels=le.classes_)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('DT Cross-Validation Confusion Matrix')
+plt.tight_layout()
+plt.savefig('dt_cv_confusion_matrix.png', dpi=150)
+plt.show()
+
+plt.figure(figsize=(10, 8))
+dt_top15 = dt_feature_importance.head(
+    15).sort_values('importance', ascending=True)
+colors = sns.color_palette("coolwarm", 15)
+sns.barplot(x='importance', y='feature', data=dt_top15, palette=colors)
+plt.xlabel('Importance')
+plt.ylabel('Feature')
+plt.title('Decision Tree Feature Importance (Top 15)')
+plt.tight_layout()
+plt.savefig('dt_feature_importance.png', dpi=150)
+plt.show()
+print("DT feature importance saved to dt_feature_importance.png")
+
 # %%
 fig, ax = plt.subplots(figsize=(24, 12))
-plot_tree(dt_clf, feature_names=list(X_train_final.columns),
-          class_names=list(le.classes_), filled=True, ax=ax, max_depth=4)
-plt.title("Decision Tree Classifier (max_depth=4 for readability)")
+plot_tree(dt_clf.named_steps['dt'], feature_names=list(X_train_final.columns),
+          class_names=list(le.classes_), filled=True, ax=ax, max_depth=2)
+plt.title("Decision Tree Classifier (max_depth=2 for readability)")
 plt.tight_layout()
 plt.savefig("decision_tree_optimized.png", dpi=150, bbox_inches='tight')
 plt.show()
@@ -346,7 +510,7 @@ print("EXTRACTING DECISION TREE RULES (INTERPRETABLE)")
 print("="*60)
 
 tree_rules = export_text(
-    dt_clf, feature_names=list(X_train_final.columns), max_depth=4)
+    dt_clf.named_steps['dt'], feature_names=list(X_train_final.columns), max_depth=4)
 print("Decision Tree Rules (first 4 levels):")
 print(tree_rules)
 
@@ -435,11 +599,18 @@ print(cm)
 
 plt.figure(figsize=(8, 6))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-            xticklabels=le.classes_, yticklabels=le.classes_)
+            xticklabels=le.classes_, yticbklabels=le.classes_)
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Validation Confusion Matrix')
-plt.tight_layout()
+plt.tight_layout()b
 plt.savefig(OUTPUT_PNG, dpi=150)
 plt.show()
 print(f"Confusion matrix saved to {OUTPUT_PNG}")
+
+# %%
+pd.set_option('display.max_colwidth', None)
+print(rule_stats.head(5))
+print(len(rf_rules))
+
+# %%

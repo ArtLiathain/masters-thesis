@@ -5,8 +5,8 @@ use std::{
     path::Path,
 };
 
-use crate::git_analyzer::GitAnalyzer;
 use crate::codescene_client::{label_from_code_health, CodeSceneClient};
+use crate::git_analyzer::GitAnalyzer;
 use crate::storage::Neo4jClient;
 
 fn extract_repo_name(url: &str) -> Option<String> {
@@ -26,7 +26,7 @@ pub async fn analyse_github_repos(
     json_file: String,
     neo4j_uri: String,
     _folder_path: String,
-    ignore_repos: Vec<String>,
+    extension: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Neo4jClient::new(&neo4j_uri).await?;
     client.init_schema().await?;
@@ -58,11 +58,6 @@ pub async fn analyse_github_repos(
             let repo_name = extract_repo_name(repo_url).unwrap_or_else(|| "unknown".to_string());
             println!("{}", repo_name);
 
-            if ignore_repos.iter().any(|r| repo_name.contains(r)) {
-                println!("Skipping {} - in ignore list", repo_name);
-                continue;
-            }
-
             println!("Processing: {}", repo_url);
 
             let repo_clone_path = cache_base.join(&repo_name);
@@ -76,11 +71,14 @@ pub async fn analyse_github_repos(
                     .map_err(|e| format!("Clone failed: {}", e))?;
             }
 
-            let analyser =
-                GitAnalyzer::new(repo_clone_path.display().to_string(), repo_url.to_string());
+            let analyser = GitAnalyzer::new(
+                repo_clone_path.display().to_string(),
+                repo_url.to_string(),
+                extension.clone(),
+            );
 
-            let max_files_per_commit = 100;
-            let max_renames_per_commit = 50;
+            let max_files_per_commit = 200;
+            let max_renames_per_commit = 300;
 
             match analyser
                 .analyze(
@@ -92,7 +90,7 @@ pub async fn analyse_github_repos(
                 .await
             {
                 Ok(commit_count) => {
-                    client.compute_hub_scores(&repo_name).await?;
+                    client.compute_hub_scores(&repo_name, 0.0).await?;
                     println!(
                         "Saved {} to Neo4j with {} commits analyzed",
                         repo_name, commit_count
@@ -110,15 +108,20 @@ pub async fn analyze_local_repo(
     repo_path: String,
     repo_name: String,
     neo4j_uri: String,
+    neo4j_database: String,
     prune: bool,
     threshold: i64,
     max_files_per_commit: usize,
     max_renames_per_commit: usize,
+    hub_threshold: f64,
+    extension: String,
+    output_csv: String,
 ) -> Result<i64, Box<dyn std::error::Error>> {
-    let client = Neo4jClient::new(&neo4j_uri).await?;
+    let client = Neo4jClient::new_with_database(&neo4j_uri, &neo4j_database).await?;
     client.init_schema().await?;
+    client.delete_all_nodes().await?;
 
-    let analyser = GitAnalyzer::new(repo_path, "null".to_string());
+    let analyser = GitAnalyzer::new(repo_path.clone(), "null".to_string(), extension.clone());
     let commit_count = analyser
         .analyze(
             &client,
@@ -138,30 +141,48 @@ pub async fn analyze_local_repo(
         println!("Pruned {} edges with weight < {}", deleted, threshold);
     }
 
-    client.compute_hub_scores(&repo_name).await?;
+    client.compute_hub_scores(&repo_name, 0.0).await?;
     println!("Computed hub scores for {}", repo_name);
+
+    let temp_folder = format!("/tmp/{}", repo_name);
+    copy_files_by_hub_threshold(
+        neo4j_uri,
+        neo4j_database,
+        hub_threshold,
+        temp_folder.clone(),
+        extension,
+        vec![],
+        Some(repo_path.clone()),
+    )
+    .await?;
+
+    crate::file_metrics_analyser::convert_balanced_metrics(temp_folder.clone(), output_csv)?;
+
+    let _ = fs::remove_dir_all(&temp_folder);
 
     Ok(commit_count)
 }
 
-pub async fn copy_files(
+pub async fn copy_files_by_hub_threshold(
     neo4j_uri: String,
-    limit: i64,
+    neo4j_database: String,
+    hub_threshold: f64,
     output_dir: String,
     extension: String,
     ignore_repos: Vec<String>,
-    risk: &str,
+    local_path: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = Neo4jClient::new(&neo4j_uri).await?;
+    let client = Neo4jClient::new_with_database(&neo4j_uri, &neo4j_database).await?;
 
-    let repos_with_files = match risk {
-        "high" => client.get_top_files_grouped(limit, &extension, &ignore_repos).await?,
-        "low" => client.get_low_risk_files(limit, &extension, &ignore_repos).await?,
-        _ => return Err("Risk must be 'high' or 'low'".into()),
-    };
+    let repos_with_files = client
+        .get_files_by_hub_threshold(hub_threshold, &extension, &ignore_repos)
+        .await?;
 
-    let output_path = Path::new(&output_dir);
-    fs::create_dir_all(output_path)?;
+    let high_dir = Path::new(&output_dir).join("high");
+    let low_dir = Path::new(&output_dir).join("low");
+
+    fs::create_dir_all(&high_dir)?;
+    fs::create_dir_all(&low_dir)?;
 
     let cache_base = Path::new("./repo_cache");
     fs::create_dir_all(cache_base)?;
@@ -182,58 +203,117 @@ pub async fn copy_files(
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fo);
 
+    let mut high_count = 0;
+    let mut low_count = 0;
+
     for repo_data in repos_with_files {
         let repo_name = &repo_data.repo;
         let repo_url = &repo_data.repo_url;
-
-        if repo_url.is_empty() {
-            println!("Skipping {} - no repo URL", repo_name);
-            continue;
-        }
+        let is_high_risk = repo_data.is_high_risk;
 
         if repo_data.files.is_empty() {
             println!("Skipping {} - no files", repo_name);
             continue;
         }
 
-        println!("Processing {} - {} files", repo_name, repo_data.files.len());
+        if let Some(ref local) = local_path {
+            println!(
+                "Using local repo for {} - {} files (high: {})",
+                repo_name,
+                repo_data.files.len(),
+                is_high_risk
+            );
+            let source_base = Path::new(local);
 
-        let repo_clone_path = cache_base.join(repo_name);
+            for file in &repo_data.files {
+                let source_file = source_base.join(&file.path);
+                if !source_file.exists() {
+                    println!("  File not found: {}", file.path);
+                    continue;
+                }
 
-        if !repo_clone_path.exists() {
-            println!("Cloning {}...", repo_name);
-            builder
-                .clone(repo_url, &repo_clone_path)
-                .map_err(|e| format!("Failed to clone {}: {}", repo_url, e))?;
+                let dest_filename = format!("{}__{}", repo_name, file.path.replace('/', "_"));
+
+                let target_dir = if file.hub_score >= hub_threshold {
+                    &high_dir
+                } else {
+                    &low_dir
+                };
+
+                if file.hub_score >= hub_threshold {
+                    high_count += 1;
+                } else {
+                    low_count += 1;
+                }
+
+                let dest_file = target_dir.join(&dest_filename);
+
+                fs::copy(&source_file, &dest_file)
+                    .map_err(|e| format!("Failed to copy {}: {}", file.path, e))?;
+
+                println!("  Copied: {}", dest_filename);
+            }
         } else {
-            println!("Using cached repo: {}", repo_name);
-        }
-
-        for file in &repo_data.files {
-            let source_file = repo_clone_path.join(&file.path);
-            if !source_file.exists() {
-                println!("  File not found: {}", file.path);
+            if repo_url.is_empty() {
+                println!("Skipping {} - no repo URL", repo_name);
                 continue;
             }
 
-            let filename = Path::new(&file.path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| file.path.clone());
+            println!(
+                "Processing {} - {} files (high: {})",
+                repo_name,
+                repo_data.files.len(),
+                is_high_risk
+            );
 
-            let dest_filename = format!("{}__{}", repo_name, filename);
-            let dest_file = output_path.join(&dest_filename);
+            let repo_clone_path = cache_base.join(repo_name);
 
-            fs::copy(&source_file, &dest_file)
-                .map_err(|e| format!("Failed to copy {}: {}", file.path, e))?;
+            if !repo_clone_path.exists() {
+                println!("Cloning {}...", repo_name);
+                builder
+                    .clone(repo_url, &repo_clone_path)
+                    .map_err(|e| format!("Failed to clone {}: {}", repo_url, e))?;
+            } else {
+                println!("Using cached repo: {}", repo_name);
+            }
 
-            println!("  Copied: {}", dest_filename);
+            for file in &repo_data.files {
+                let source_file = repo_clone_path.join(&file.path);
+                if !source_file.exists() {
+                    println!("  File not found: {}", file.path);
+                    continue;
+                }
+
+                let dest_filename = format!("{}__{}", repo_name, file.path.replace('/', "_"));
+
+                let target_dir = if file.hub_score >= hub_threshold {
+                    &high_dir
+                } else {
+                    &low_dir
+                };
+
+                if file.hub_score >= hub_threshold {
+                    high_count += 1;
+                } else {
+                    low_count += 1;
+                }
+
+                let dest_file = target_dir.join(&dest_filename);
+
+                fs::copy(&source_file, &dest_file)
+                    .map_err(|e| format!("Failed to copy {}: {}", file.path, e))?;
+
+                println!("  Copied: {}", dest_filename);
+            }
         }
 
         println!("Kept in cache: {}", repo_name);
     }
 
-    println!("Done! Files saved to {}", output_dir);
+    println!(
+        "Done! Files saved to {} (high: {}, low: {})",
+        output_dir, high_count, low_count
+    );
 
     Ok(())
 }
@@ -259,12 +339,11 @@ pub async fn analyze_with_codescene(
     let codescene_client = CodeSceneClient::new("https://api.codescene.io", &token);
 
     println!("Fetching code health data from CodeScene...");
-    let health_map = codescene_client.get_file_code_health(&project_id, &repo_name, &file_extensions).await?;
+    let health_map = codescene_client
+        .get_file_code_health(&project_id, &repo_name, &file_extensions)
+        .await?;
 
-    println!(
-        "Found code health data for {} files",
-        health_map.len()
-    );
+    println!("Found code health data for {} files", health_map.len());
 
     let mut wtr = Writer::from_path(&output_csv)?;
 

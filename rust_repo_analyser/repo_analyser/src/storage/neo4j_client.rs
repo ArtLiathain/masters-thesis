@@ -48,6 +48,7 @@ pub struct RepoWithFiles {
     pub repo: String,
     pub repo_url: String,
     pub files: Vec<RepoFile>,
+    pub is_high_risk: bool,
 }
 
 pub struct Neo4jClient {
@@ -56,8 +57,18 @@ pub struct Neo4jClient {
 
 impl Neo4jClient {
     pub async fn new(uri: &str) -> Result<Self, String> {
+        Self::new_with_database(uri, "").await
+    }
+
+    pub async fn new_with_database(uri: &str, database: &str) -> Result<Self, String> {
+        let full_uri = if database.is_empty() {
+            uri.to_string()
+        } else {
+            format!("{}/{}", uri.trim_end_matches('/'), database)
+        };
+
         let config = ConfigBuilder::default()
-            .uri(uri)
+            .uri(&full_uri)
             .user("")
             .password("")
             .build()
@@ -70,6 +81,17 @@ impl Neo4jClient {
         Ok(Self {
             graph: Arc::new(Mutex::new(graph)),
         })
+    }
+
+    pub async fn delete_all_nodes(&self) -> Result<(), String> {
+        let graph = self.graph.lock().await;
+
+        graph
+            .run(query("MATCH (n) DETACH DELETE n"))
+            .await
+            .map_err(|e| format!("Failed to delete all nodes: {}", e))?;
+
+        Ok(())
     }
 
     pub async fn init_schema(&self) -> Result<(), String> {
@@ -366,11 +388,11 @@ impl Neo4jClient {
         Ok(deleted_edges)
     }
 
-    pub async fn compute_hub_scores(&self, repo: &str) -> Result<(), String> {
+    pub async fn compute_hub_scores(&self, repo: &str, min_coupling: f64) -> Result<(), String> {
         let graph = self.graph.lock().await;
 
         let totals_query = query(
-            "MATCH (f:File {repo: $repo}) RETURN count(f) as total_files, sum(f.additions + f.deletions) as total_churn"
+            "MATCH (f:File {repo: $repo}) WHERE f.deleted_at_commit IS NULL RETURN count(f) as total_files, sum(f.additions + f.deletions) as total_churn"
         )
         .param("repo", repo);
 
@@ -395,13 +417,14 @@ impl Neo4jClient {
             "MATCH (f:File {repo: $repo})-[r:CO_CHANGED]->(t:File {repo: $repo}) \
              WITH f, collect({weight: r.weight, target_commits: t.commit_count}) as edges, \
                   (f.additions + f.deletions) as file_churn \
-             WITH f, [e IN edges WHERE e.weight IS NOT NULL] as valid_edges, file_churn \
+             WITH f, [e IN edges WHERE e.weight IS NOT NULL AND (toFloat(e.weight) / e.target_commits) >= $min_coupling] as valid_edges, file_churn \
              WITH f, size(valid_edges) as partner_count, valid_edges, file_churn \
              UNWIND valid_edges as e \
              WITH f, partner_count, avg(toFloat(e.weight) / e.target_commits) as avg_coupling, file_churn \
              RETURN f.path as path, partner_count, avg_coupling, file_churn"
         )
-        .param("repo", repo);
+        .param("repo", repo)
+        .param("min_coupling", min_coupling);
 
         let mut compute_result = graph
             .execute(compute_query)
@@ -426,7 +449,7 @@ impl Neo4jClient {
         for (path, partner_count, avg_coupling, hub_score) in updates {
             let update_query = query(
                 "MATCH (f:File {repo: $repo, path: $path}) \
-                 SET f.partner_count = $partner_count, f.avg_coupling = $avg_coupling, f.hub_score = $hub_score"
+                 SET f.partner_count = $partner_count, f.avg_coupling = $avg_coupling, f.hub_score = COALESCE($hub_score, 0)"
             )
             .param("repo", repo)
             .param("path", path)
@@ -440,6 +463,27 @@ impl Neo4jClient {
                 .map_err(|e| format!("Failed to update hub score: {}", e))?;
         }
         Ok(())
+    }
+
+    pub async fn get_all_repo_names(&self) -> Result<Vec<String>, String> {
+        let graph = self.graph.lock().await;
+
+        let q = query("MATCH (f:File) RETURN distinct f.repo as repo ORDER BY repo");
+
+        let mut result = graph
+            .execute(q)
+            .await
+            .map_err(|e| format!("Failed to get repo names: {}", e))?;
+
+        let mut repos = Vec::new();
+        while let Ok(Some(row)) = result.next().await {
+            let repo: String = row.get::<String>("repo").unwrap_or_default();
+            if !repo.is_empty() {
+                repos.push(repo);
+            }
+        }
+
+        Ok(repos)
     }
 
     pub async fn link_all_files_to_repo(&self, repo: &str) -> Result<(), String> {
@@ -458,254 +502,14 @@ impl Neo4jClient {
         Ok(())
     }
 
-    pub async fn get_top_files_grouped(
-        &self,
-        limit: i64,
-        extension: &str,
-        ignore_repos: &[String],
-    ) -> Result<Vec<RepoWithFiles>, String> {
-        let graph = self.graph.lock().await;
-
-        let pattern = format!(".{}", extension);
-
-        let mut where_clauses = vec![
-            "f.deleted_at_commit IS NULL".to_string(),
-            "f.hub_score IS NOT NULL".to_string(),
-            "f.path ENDS WITH $ext".to_string(),
-        ];
-        for (i, _) in ignore_repos.iter().enumerate() {
-            where_clauses.push(format!(
-                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
-                i
-            ));
-        }
-        let where_clause = where_clauses.join(" AND ");
-
-        let q = query(&format!(
-            "MATCH (f:File) \
-             WHERE {} \
-             WITH f ORDER BY f.hub_score DESC LIMIT $limit \
-             MATCH (r:Repository {{name: f.repo}}) \
-             RETURN f.repo AS repo, r.url AS repo_url, collect({{path: f.path, hub_score: f.hub_score}}) AS files \
-             ORDER BY repo",
-            where_clause
-        ))
-        .param("limit", limit)
-        .param("ext", pattern);
-
-        let mut q = q;
-        for (i, ignore) in ignore_repos.iter().enumerate() {
-            q = q.param(&format!("ignore_{}", i), ignore.as_str());
-        }
-
-        let mut result = graph
-            .execute(q)
-            .await
-            .map_err(|e| format!("Failed to get top files: {}", e))?;
-
-        let mut repos_with_files = Vec::new();
-        while let Ok(Some(row)) = result.next().await {
-            let repo: String = row.get::<String>("repo").unwrap_or_default();
-            let repo_url: Option<String> = row.get::<String>("repo_url").ok();
-            let files_data: Vec<serde_json::Value> = row
-                .get::<Vec<serde_json::Value>>("files")
-                .unwrap_or_default();
-
-            let files: Vec<RepoFile> = files_data
-                .into_iter()
-                .map(|v| {
-                    let path = v
-                        .get("path")
-                        .and_then(|p| p.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let hub_score = v.get("hub_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
-                    RepoFile { path, hub_score }
-                })
-                .collect();
-
-            repos_with_files.push(RepoWithFiles {
-                repo,
-                repo_url: repo_url.unwrap_or_default(),
-                files,
-            });
-        }
-
-        Ok(repos_with_files)
-    }
-
-    pub async fn get_low_risk_files(
-        &self,
-        limit: i64,
-        extension: &str,
-        ignore_repos: &[String],
-    ) -> Result<Vec<RepoWithFiles>, String> {
-        let graph = self.graph.lock().await;
-
-        let pattern = format!(".{}", extension);
-
-        let mut base_where_clauses = vec![
-            "f.deleted_at_commit IS NULL".to_string(),
-            "f.hub_score IS NOT NULL".to_string(),
-            "f.path ENDS WITH $ext".to_string(),
-        ];
-        for (i, _) in ignore_repos.iter().enumerate() {
-            base_where_clauses.push(format!(
-                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
-                i
-            ));
-        }
-        let base_where = base_where_clauses.join(" AND ");
-
-        let count_q = query(&format!(
-            "MATCH (f:File) \
-             WHERE {} \
-             RETURN count(f) AS total",
-            base_where
-        ))
-        .param("ext", pattern.clone());
-
-        let mut count_q = count_q;
-        for (i, ignore) in ignore_repos.iter().enumerate() {
-            count_q = count_q.param(&format!("ignore_{}", i), ignore.as_str());
-        }
-
-        let mut count_result = graph
-            .execute(count_q)
-            .await
-            .map_err(|e| format!("Failed to count files: {}", e))?;
-
-        let total: i64 = if let Ok(Some(row)) = count_result.next().await {
-            row.get::<i64>("total").unwrap_or(0)
-        } else {
-            0
-        };
-
-        if total == 0 {
-            return Ok(Vec::new());
-        }
-
-        let effective_limit = limit.min(total);
-
-        let needed_pct = (effective_limit as f64 / total as f64) * 100.0;
-        let lower_pct = (25.0 - needed_pct / 2.0).max(0.0) / 100.0;
-        let upper_pct = (25.0 + needed_pct / 2.0).min(100.0) / 100.0;
-
-        let lower_idx = (total as f64 * lower_pct).floor() as i64;
-        let upper_idx = (total as f64 * upper_pct).floor() as i64;
-
-        let (lower_value, upper_value): (f64, f64) = if lower_pct >= upper_pct {
-            (f64::MIN, f64::MAX)
-        } else {
-            let percentile_q = query(&format!(
-                "MATCH (f:File) \
-                 WHERE {} \
-                 WITH f ORDER BY f.hub_score ASC \
-                 WITH collect(f.hub_score) AS scores \
-                 RETURN \
-                   scores[$lower_idx] AS lower_value, \
-                   scores[$upper_idx] AS upper_value",
-                base_where
-            ))
-            .param("ext", pattern.clone())
-            .param("lower_idx", lower_idx)
-            .param("upper_idx", upper_idx);
-
-            let mut percentile_q = percentile_q;
-            for (i, ignore) in ignore_repos.iter().enumerate() {
-                percentile_q = percentile_q.param(&format!("ignore_{}", i), ignore.as_str());
-            }
-
-            let mut percentile_result = graph
-                .execute(percentile_q)
-                .await
-                .map_err(|e| format!("Failed to get percentile values: {}", e))?;
-
-            if let Ok(Some(row)) = percentile_result.next().await {
-                let lower: f64 = row.get::<f64>("lower_value").unwrap_or(0.0);
-                let upper: f64 = row.get::<f64>("upper_value").unwrap_or(0.0);
-                (lower, upper)
-            } else {
-                return Ok(Vec::new());
-            }
-        };
-
-        let mut where_clauses = vec![
-            "f.deleted_at_commit IS NULL".to_string(),
-            "f.hub_score IS NOT NULL".to_string(),
-            format!("f.hub_score >= {}", lower_value),
-            format!("f.hub_score <= {}", upper_value),
-            "f.path ENDS WITH $ext".to_string(),
-        ];
-        for (i, _) in ignore_repos.iter().enumerate() {
-            where_clauses.push(format!(
-                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
-                i
-            ));
-        }
-        let where_clause = where_clauses.join(" AND ");
-
-        let q = query(&format!(
-            "MATCH (f:File) \
-             WHERE {} \
-             WITH f ORDER BY f.hub_score ASC LIMIT $limit \
-             MATCH (r:Repository {{name: f.repo}}) \
-             RETURN f.repo AS repo, r.url AS repo_url, collect({{path: f.path, hub_score: f.hub_score}}) AS files \
-             ORDER BY repo",
-            where_clause
-        ))
-        .param("limit", effective_limit)
-        .param("ext", pattern);
-
-        let mut q = q;
-        for (i, ignore) in ignore_repos.iter().enumerate() {
-            q = q.param(&format!("ignore_{}", i), ignore.as_str());
-        }
-
-        let mut result = graph
-            .execute(q)
-            .await
-            .map_err(|e| format!("Failed to get low risk files: {}", e))?;
-
-        let mut repos_with_files = Vec::new();
-        while let Ok(Some(row)) = result.next().await {
-            let repo: String = row.get::<String>("repo").unwrap_or_default();
-            let repo_url: Option<String> = row.get::<String>("repo_url").ok();
-            let files_data: Vec<serde_json::Value> = row
-                .get::<Vec<serde_json::Value>>("files")
-                .unwrap_or_default();
-
-            let files: Vec<RepoFile> = files_data
-                .into_iter()
-                .map(|v| {
-                    let path = v
-                        .get("path")
-                        .and_then(|p| p.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let hub_score = v.get("hub_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
-                    RepoFile { path, hub_score }
-                })
-                .collect();
-
-            repos_with_files.push(RepoWithFiles {
-                repo,
-                repo_url: repo_url.unwrap_or_default(),
-                files,
-            });
-        }
-
-        Ok(repos_with_files)
-    }
-
     pub async fn get_all_hub_scores(&self, extension: &str) -> Result<Vec<HubScoreData>, String> {
         let graph = self.graph.lock().await;
 
-        let pattern = format!(".{}", extension);
+        let pattern = format!("{}", extension);
 
         let q = query(
             "MATCH (f:File) \
-             WHERE f.hub_score IS NOT NULL AND f.path ENDS WITH $ext \
+             WHERE f.path ENDS WITH $ext AND f.deleted_at_commit IS NULL \
              RETURN f.repo as repo, f.path as path, f.hub_score as hub_score, \
                     f.avg_coupling as avg_coupling, f.commit_count as commit_count, \
                     f.partner_count as partner_count, f.additions as additions, \
@@ -742,5 +546,85 @@ impl Neo4jClient {
         }
 
         Ok(files)
+    }
+
+    pub async fn get_files_by_hub_threshold(
+        &self,
+        hub_threshold: f64,
+        extension: &str,
+        ignore_repos: &[String],
+    ) -> Result<Vec<RepoWithFiles>, String> {
+        let graph = self.graph.lock().await;
+
+        let pattern = format!("{}", extension);
+
+        let mut where_clauses = vec![
+            "f.deleted_at_commit IS NULL".to_string(),
+            "f.path ENDS WITH $ext".to_string(),
+        ];
+        for (i, _) in ignore_repos.iter().enumerate() {
+            where_clauses.push(format!(
+                "NOT toLower(f.repo) CONTAINS toLower($ignore_{})",
+                i
+            ));
+        }
+        let where_clause = where_clauses.join(" AND ");
+
+        let q = query(&format!(
+            "MATCH (f:File) \
+             WHERE {} \
+             WITH f ORDER BY f.hub_score DESC \
+             MATCH (r:Repository {{name: f.repo}}) \
+             RETURN f.repo AS repo, r.url AS repo_url, collect({{path: f.path, hub_score: f.hub_score}}) AS files \
+             ORDER BY repo",
+            where_clause
+        ))
+        .param("ext", pattern);
+
+        let mut q = q;
+        for (i, ignore) in ignore_repos.iter().enumerate() {
+            q = q.param(&format!("ignore_{}", i), ignore.as_str());
+        }
+
+        let mut result = graph
+            .execute(q)
+            .await
+            .map_err(|e| format!("Failed to get files: {}", e))?;
+
+        let mut repos_with_files = Vec::new();
+        while let Ok(Some(row)) = result.next().await {
+            let repo: String = row.get::<String>("repo").unwrap_or_default();
+            let repo_url: Option<String> = row.get::<String>("repo_url").ok();
+            let files_data: Vec<serde_json::Value> = row
+                .get::<Vec<serde_json::Value>>("files")
+                .unwrap_or_default();
+
+            let files: Vec<RepoFile> = files_data
+                .into_iter()
+                .map(|v| {
+                    let path = v
+                        .get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let hub_score = v.get("hub_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                    RepoFile { path, hub_score }
+                })
+                .collect();
+
+            let is_high_risk = files
+                .first()
+                .map(|f| f.hub_score >= hub_threshold)
+                .unwrap_or(false);
+
+            repos_with_files.push(RepoWithFiles {
+                repo,
+                repo_url: repo_url.unwrap_or_default(),
+                files,
+                is_high_risk,
+            });
+        }
+
+        Ok(repos_with_files)
     }
 }

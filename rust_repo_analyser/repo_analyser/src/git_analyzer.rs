@@ -8,13 +8,20 @@ use crate::storage::Neo4jClient;
 pub struct GitAnalyzer {
     repo_path: String,
     repo_url: String,
+    extensions: Vec<String>,
 }
 
 impl GitAnalyzer {
-    pub fn new(repo_path: String, repo_url: String) -> Self {
+    pub fn new(repo_path: String, repo_url: String, extensions: String) -> Self {
+        let extensions: Vec<String> = if extensions.is_empty() {
+            vec![]
+        } else {
+            extensions.split(',').map(|s| s.to_string()).collect()
+        };
         Self {
             repo_path,
             repo_url,
+            extensions,
         }
     }
 
@@ -48,6 +55,9 @@ impl GitAnalyzer {
 
         let mut commit_count = 0i64;
         let mut skipped_commits: Vec<String> = Vec::new();
+        let mut total_files_saved = 0i64;
+        let mut total_deleted_files_saved = 0i64;
+        let mut deleted_files_from_large_commits = 0i64;
 
         for rev in revwalk {
             let current_commit = rev.map_err(|err| format!("Error unwrapping revwalk:{}", err))?;
@@ -89,16 +99,15 @@ impl GitAnalyzer {
                 }
 
                 // Always process deleted files even in large commits
-                let deleted_files: Vec<&ChangedFile> = changed_files
-                    .iter()
-                    .filter(|f| f.is_deleted)
-                    .collect();
+                let deleted_files: Vec<&ChangedFile> =
+                    changed_files.iter().filter(|f| f.is_deleted).collect();
                 if !deleted_files.is_empty() {
                     debug!(
                         "Processing {} deleted files for large commit {}",
                         deleted_files.len(),
                         commit_hash
                     );
+                    deleted_files_from_large_commits += deleted_files.len() as i64;
                     for file in deleted_files {
                         if let Err(e) = client
                             .save_file_node(
@@ -124,8 +133,17 @@ impl GitAnalyzer {
                 );
             } else if !changed_files.is_empty() || !renames.is_empty() {
                 debug!("Save to Neo4j");
-                self.save_to_neo4j(client, repo_name, &changed_files, &renames, Some(&commit_hash))
+                let (files, deleted) = self
+                    .save_to_neo4j(
+                        client,
+                        repo_name,
+                        &changed_files,
+                        &renames,
+                        Some(&commit_hash),
+                    )
                     .await?;
+                total_files_saved += files;
+                total_deleted_files_saved += deleted;
                 debug!("Saved to Neo4j");
             }
 
@@ -149,11 +167,23 @@ impl GitAnalyzer {
         info!("Total commits analyzed: {}", commit_count);
 
         if !skipped_commits.is_empty() {
-            info!("Skipped {} large commits:", skipped_commits.len());
-            for hash in &skipped_commits {
-                info!("  - {}", hash);
-            }
+            info!(
+                "Skipped {} large commits out of {} total ({}%)",
+                skipped_commits.len(),
+                commit_count,
+                (skipped_commits.len() as f64 / commit_count as f64 * 100.0) as i64
+            );
         }
+
+        info!(
+            "Git analysis summary for {}: {} commits analyzed, {} skipped (large), {} files saved ({} deleted from small commits, {} deleted from large commits)",
+            repo_name,
+            commit_count,
+            skipped_commits.len(),
+            total_files_saved,
+            total_deleted_files_saved,
+            deleted_files_from_large_commits
+        );
 
         Ok(commit_count)
     }
@@ -165,7 +195,10 @@ impl GitAnalyzer {
         changed_files: &[ChangedFile],
         renames: &[(String, String)],
         commit_hash: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(i64, i64), String> {
+        let mut files_saved = 0i64;
+        let mut deleted_files_saved = 0i64;
+
         debug!("Renaming files Started");
         for (old_path, new_path) in renames {
             match client.rename_file_node(repo_name, old_path, new_path).await {
@@ -188,11 +221,11 @@ impl GitAnalyzer {
 
         debug!("Saving file nodes");
         for file in changed_files {
-            let deleted_at_commit = if file.is_deleted {
-                commit_hash
-            } else {
-                None
-            };
+            let deleted_at_commit = if file.is_deleted { commit_hash } else { None };
+            files_saved += 1;
+            if file.is_deleted {
+                deleted_files_saved += 1;
+            }
             client
                 .save_file_node(
                     repo_name,
@@ -213,8 +246,6 @@ impl GitAnalyzer {
                 let source = unique_files[i];
                 let target = unique_files[j];
 
-                debug!("Failed save at {}, {}", source, target);
-
                 client
                     .save_cochange_relationship(repo_name, source, target)
                     .await
@@ -223,7 +254,7 @@ impl GitAnalyzer {
         }
         debug!("Relationships saved");
 
-        Ok(())
+        Ok((files_saved, deleted_files_saved))
     }
 
     fn get_changed_files(
@@ -235,30 +266,176 @@ impl GitAnalyzer {
             .tree()
             .map_err(|e| format!("Failed to get commit tree: {}", e))?;
 
-        let parent_tree = if commit.parent_count() > 0 {
-            let parent = commit
-                .parent(0)
-                .map_err(|e| format!("Failed to get parent: {}", e))?;
-            Some(
-                parent
-                    .tree()
-                    .map_err(|e| format!("Failed to get commit tree: {}", e))?,
-            )
-        } else {
-            None
-        };
-
-        let mut diff = repo
-            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
-            .map_err(|e| format!("Failed to get diff: {}", e))?;
-
-        diff.find_similar(Some(&mut DiffFindOptions::new().renames(true)))
-            .map_err(|e| format!("Failed to find similar: {}", e))?;
-
         let mut renames: Vec<(String, String)> = Vec::new();
         let mut deleted_paths: HashSet<String> = HashSet::new();
         let mut all_paths: Vec<String> = Vec::new();
 
+        if commit.parent_count() == 0 {
+            let mut diff = repo
+                .diff_tree_to_tree(None, Some(&tree), None)
+                .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+            diff.find_similar(Some(&mut DiffFindOptions::new().renames(true)))
+                .map_err(|e| format!("Failed to find similar: {}", e))?;
+
+            let mut file_stats: std::collections::HashMap<String, (u32, u32)> =
+                std::collections::HashMap::new();
+            Self::collect_diff_entries(
+                &diff,
+                &mut renames,
+                &mut deleted_paths,
+                &mut all_paths,
+                &mut file_stats,
+                &self.extensions,
+            )?;
+
+            let mut result: Vec<ChangedFile> = all_paths
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .filter_map(|path| {
+                    let (additions, deletions) = file_stats.remove(path).unwrap_or((0, 0));
+                    Some(ChangedFile {
+                        path: path.clone(),
+                        additions,
+                        deletions,
+                        is_deleted: false,
+                        renamed_to: None,
+                    })
+                })
+                .collect();
+
+            for path in deleted_paths {
+                result.push(ChangedFile {
+                    path,
+                    additions: 0,
+                    deletions: 0,
+                    is_deleted: true,
+                    renamed_to: None,
+                });
+            }
+
+            return Ok((result, renames));
+        } else if commit.parent_count() == 1 {
+            let parent = commit
+                .parent(0)
+                .map_err(|e| format!("Failed to get parent commit: {}", e))?;
+            let parent_tree = parent
+                .tree()
+                .map_err(|e| format!("Failed to get parent tree: {}", e))?;
+
+            let mut diff = repo
+                .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+                .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+            diff.find_similar(Some(&mut DiffFindOptions::new().renames(true)))
+                .map_err(|e| format!("Failed to find similar: {}", e))?;
+
+            let mut file_stats: std::collections::HashMap<String, (u32, u32)> =
+                std::collections::HashMap::new();
+            Self::collect_diff_entries(
+                &diff,
+                &mut renames,
+                &mut deleted_paths,
+                &mut all_paths,
+                &mut file_stats,
+                &self.extensions,
+            )?;
+
+            let mut result: Vec<ChangedFile> = all_paths
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .filter_map(|path| {
+                    let (additions, deletions) = file_stats.remove(path).unwrap_or((0, 0));
+                    Some(ChangedFile {
+                        path: path.clone(),
+                        additions,
+                        deletions,
+                        is_deleted: false,
+                        renamed_to: None,
+                    })
+                })
+                .collect();
+
+            for path in deleted_paths {
+                result.push(ChangedFile {
+                    path,
+                    additions: 0,
+                    deletions: 0,
+                    is_deleted: true,
+                    renamed_to: None,
+                });
+            }
+
+            return Ok((result, renames));
+        } else {
+            let mut file_stats: std::collections::HashMap<String, (u32, u32)> =
+                std::collections::HashMap::new();
+
+            for i in 0..commit.parent_count() {
+                let parent = commit
+                    .parent(i)
+                    .map_err(|e| format!("Failed to get parent commit: {}", e))?;
+                let parent_tree = parent
+                    .tree()
+                    .map_err(|e| format!("Failed to get parent tree: {}", e))?;
+
+                let mut diff = repo
+                    .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+                    .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+                diff.find_similar(Some(&mut DiffFindOptions::new().renames(true)))
+                    .map_err(|e| format!("Failed to find similar: {}", e))?;
+
+                Self::collect_diff_entries(
+                    &diff,
+                    &mut renames,
+                    &mut deleted_paths,
+                    &mut all_paths,
+                    &mut file_stats,
+                    &self.extensions,
+                )?;
+            }
+
+            let mut result: Vec<ChangedFile> = all_paths
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .filter_map(|path| {
+                    let (additions, deletions) = file_stats.remove(path).unwrap_or((0, 0));
+                    Some(ChangedFile {
+                        path: path.clone(),
+                        additions,
+                        deletions,
+                        is_deleted: false,
+                        renamed_to: None,
+                    })
+                })
+                .collect();
+
+            for path in deleted_paths {
+                result.push(ChangedFile {
+                    path,
+                    additions: 0,
+                    deletions: 0,
+                    is_deleted: true,
+                    renamed_to: None,
+                });
+            }
+
+            return Ok((result, renames));
+        }
+    }
+
+    fn collect_diff_entries(
+        diff: &git2::Diff,
+        renames: &mut Vec<(String, String)>,
+        deleted_paths: &mut HashSet<String>,
+        all_paths: &mut Vec<String>,
+        file_stats: &mut std::collections::HashMap<String, (u32, u32)>,
+        extensions: &[String],
+    ) -> Result<(), String> {
         diff.foreach(
             &mut |delta, _| {
                 match delta.status() {
@@ -287,60 +464,32 @@ impl GitAnalyzer {
             None,
             Some(&mut |delta, _| {
                 if let Some(path) = delta.new_file().path() {
-                    all_paths.push(path.to_string_lossy().to_string());
+                    let path_str = path.to_string_lossy().to_string();
+                    if extensions.is_empty() || extensions.iter().any(|ext| path_str.ends_with(ext))
+                    {
+                        all_paths.push(path_str);
+                    }
                 }
                 true
             }),
-            None,
-        )
-        .map_err(|e| format!("Failed to iterate diff: {}", e))?;
-
-        let mut file_stats: std::collections::HashMap<String, (u32, u32)> =
-            std::collections::HashMap::new();
-
-        diff.foreach(
-            &mut |_, _| true,
-            None,
-            None,
             Some(&mut |delta, _hunk, line| {
                 if let Some(path) = delta.new_file().path() {
                     let path_str = path.to_string_lossy().to_string();
-                    let stats = file_stats.entry(path_str).or_insert((0, 0));
-                    if line.origin() == '+' {
-                        stats.0 += 1;
-                    } else if line.origin() == '-' {
-                        stats.1 += 1;
+                    if extensions.is_empty() || extensions.iter().any(|ext| path_str.ends_with(ext))
+                    {
+                        let stats = file_stats.entry(path_str).or_insert((0, 0));
+                        if line.origin() == '+' {
+                            stats.0 += 1;
+                        } else if line.origin() == '-' {
+                            stats.1 += 1;
+                        }
                     }
                 }
                 true
             }),
         )
-        .map_err(|e| format!("Failed to count lines: {}", e))?;
+        .map_err(|e| format!("Failed to iterate diff: {}", e))?;
 
-        let mut result: Vec<ChangedFile> = all_paths
-            .into_iter()
-            .filter_map(|path| {
-                let (additions, deletions) = file_stats.remove(&path).unwrap_or((0, 0));
-                Some(ChangedFile {
-                    path,
-                    additions,
-                    deletions,
-                    is_deleted: false,
-                    renamed_to: None,
-                })
-            })
-            .collect();
-
-        for path in deleted_paths {
-            result.push(ChangedFile {
-                path,
-                additions: 0,
-                deletions: 0,
-                is_deleted: true,
-                renamed_to: None,
-            });
-        }
-
-        Ok((result, renames))
+        Ok(())
     }
 }

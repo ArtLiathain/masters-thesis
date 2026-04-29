@@ -138,7 +138,7 @@ pub fn convert_balanced_metrics(
                 continue;
             }
 
-            if path_buf.extension().map_or(true, |ext| ext != "cpp") {
+            if path_buf.extension().is_none() {
                 continue;
             }
 

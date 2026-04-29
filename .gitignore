@@ -1,8 +1,11 @@
 # specific
 files/
 **/neo4j/**
+**/neo4j-test/**
 results/**
 target/**
+repo_cache/**
+case_study_repos/**
 
 ## Core latex/pdflatex auxiliary files:
 *.aux

@@ -189,8 +189,6 @@ where
 struct FileData {
     path: String,
     code_health: Option<CodeHealthData>,
-    change_frequency: Option<f64>,
-    lines_of_code: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

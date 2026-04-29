@@ -140,3 +140,8 @@ Five git commands that tell you where a codebase hurts before you open a single 
 - https://arxiv.org/abs/2604.04809 software energy smells
 - https://www.computer.org/product/education/professional-software-engineering-master-certification
 - https://www.computer.org/product/education/professional-software-developer-certification
+
+
+# Feedback 4
+- Introduction should be built out more (2-3)
+- FAIR Principles
