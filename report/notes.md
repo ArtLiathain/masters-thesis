@@ -145,3 +145,10 @@ Five git commands that tell you where a codebase hurts before you open a single 
 # Feedback 4
 - Introduction should be built out more (2-3)
 - FAIR Principles
+
+
+# Feedback 5
+- Statistical analysis
+- Final submission add code
+- More references in the first paragraph about research software
+- Add summary section to discussion

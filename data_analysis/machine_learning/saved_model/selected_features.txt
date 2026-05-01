@@ -2,7 +2,6 @@ nargs_fn_nargs_sum
 nargs_closure_nargs_sum
 nargs_fn_nargs_avg
 nargs_closure_nargs_avg
-nargs_closure_nargs_min
 nargs_fn_nargs_max
 nexits_exit
 nexits_exit_sum
@@ -11,6 +10,7 @@ nexits_exit_max
 cognitive
 cognitive_sum
 cognitive_avg
+cognitive_min
 cognitive_max
 cyclomatic_cyclomatic_avg
 halstead_u_operators

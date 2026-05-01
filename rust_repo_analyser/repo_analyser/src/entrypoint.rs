@@ -354,6 +354,7 @@ pub async fn analyze_with_codescene(
     for (file_path, code_health) in &health_map {
         let source_file = Path::new(&repo_path).join(file_path);
         if !source_file.exists() {
+            println!("{}", file_path);
             continue;
         }
 

@@ -18,7 +18,8 @@ struct Cli {
 enum Commands {
     Joss(JossArgs),
     Github(GithubArgs),
-    Graph(GraphArgs),
+    #[command(name = "analyse-local")]
+    AnalyseLocal(AnalyseLocalArgs),
     Clone(CloneArgs),
     Verify(VerifyArgs),
     Copy(CopyTopFilesArgs),
@@ -53,7 +54,7 @@ struct GithubArgs {
 
 #[derive(Parser, Debug)]
 #[command(about = "Analyze a local Git repository and save to Neo4j", long_about = None)]
-struct GraphArgs {
+struct AnalyseLocalArgs {
     #[arg(short, long)]
     repo: String,
 
@@ -221,7 +222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
         }
-        Commands::Graph(args) => {
+        Commands::AnalyseLocal(args) => {
             println!("Analyzing repository: {}", args.repo);
             println!("Neo4j URI: {}", args.neo4j_uri);
             println!("Prune: {}, threshold: {}", args.prune, args.threshold);
